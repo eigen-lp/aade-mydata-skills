@@ -36,6 +36,8 @@ So `docs --include-self-entered` is the **expense book view**: received document
 
 A non-empty `cancelledByMark` means the invoice was cancelled; don't classify or count it.
 
+**Re-sent invoices.** When a supplier transmits the same invoice again (same issuer, date, branch, type, series and number, hence the same `uid`), it gets a new MARK and AADE keeps only the latest as valid (spec §4.1.1). RequestDocs still returns both copies, without `cancelledByMark`. `docs` and `transmitted` keep the highest MARK per `uid` and list the dropped copies under `superseded` (`mark`, `supersededBy`, `uid`). Copies that were explicitly cancelled (`cancelledByMark`) are not treated as re-sends; they stay visible as cancelled. These are not double charges; mention them to the user only if they ask or if the old MARK was already booked or classified.
+
 ## Common invoice types (spec table 8.1)
 
 | Type | Meaning |

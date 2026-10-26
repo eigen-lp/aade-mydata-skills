@@ -573,6 +573,63 @@ def test_reconcile_saved_requestdocs_split_by_side(creds, monkeypatch, capsys, t
         assert [d["mark"] for d in json.loads(out)["missingInErp"]] == marks
 
 
+RESENT_ROUTES = {"RequestDocs": "requested_docs_resent.xml",
+                 "RequestTransmittedDocs": lambda p, b: (200, EMPTY_DOC)}
+
+
+def test_drop_superseded_keeps_highest_mark():
+    invs = [{"uid": "A", "mark": "302"}, {"uid": "A", "mark": "301"}, {"uid": "B", "mark": "303"},
+            {"mark": "304"}, {"uid": "A", "mark": "302"}]
+    kept, gone = mydata.drop_superseded(invs)
+    assert [i["mark"] for i in kept] == ["302", "303", "304"]
+    assert gone == [{"mark": "301", "supersededBy": "302", "uid": "A"}]
+
+
+def test_drop_superseded_leaves_cancelled_copies():
+    # Seen on production: a 14.30 cancelled (cancelledByMark) and re-entered with the same uid.
+    invs = [{"uid": "C", "mark": "401", "cancelledByMark": "402"}, {"uid": "C", "mark": "403"}]
+    kept, gone = mydata.drop_superseded(invs)
+    assert [i["mark"] for i in kept] == ["401", "403"] and gone == []
+
+
+@pytest.mark.parametrize("argv", [["docs"], ["docs", "--include-self-entered"], ["transmitted"]])
+def test_docs_views_hide_superseded_copies(argv, creds, monkeypatch, capsys):
+    install(monkeypatch, {**RESENT_ROUTES, "RequestTransmittedDocs": "requested_docs_resent.xml"}
+            if argv == ["transmitted"] else RESENT_ROUTES)
+    code, out, _ = run(capsys, *argv, "--format", "summary")
+    data = json.loads(out)
+    assert code == 0
+    assert sorted(i["mark"] for i in data["invoices"]) == ["400000000000302", "400000000000303"]
+    assert data["superseded"][0]["mark"] == "400000000000301"
+    assert data["superseded"][0]["supersededBy"] == "400000000000302"
+
+
+def test_reconcile_reports_superseded_and_maps_old_mark(creds, monkeypatch, capsys, tmp_path):
+    install(monkeypatch, RESENT_ROUTES)
+    erp = tmp_path / "erp.csv"
+    erp.write_text("mark,amount\n400000000000301,24.80\n400000000000303,24.80\n")
+    code, out, _ = run(capsys, "reconcile", "--file", str(erp), "--from", "2026-10-01", "--to", "2026-10-31")
+    r = json.loads(out)
+    assert code == 0 and r["summary"]["myDataInvoices"] == 2 and r["missingInErp"] == []
+    assert r["superseded"][0]["mark"] == "400000000000301"
+    mism = r["mismatched"][0]
+    assert mism["mark"] == "400000000000302" and "superseded MARK 400000000000301" in mism["differences"][0]
+    assert [m["mark"] for m in r["matched"]] == ["400000000000303"]
+
+
+def test_reconcile_dedupes_old_saved_files(creds, monkeypatch, capsys, tmp_path):
+    # A file saved without deduplication (e.g. by an older version) still reconciles correctly.
+    raw = mydata.to_obj(mydata.parse_xml((FIX / "requested_docs_resent.xml").read_bytes()))["invoicesDoc"]["invoice"]
+    saved = tmp_path / "old.json"
+    saved.write_text(json.dumps({"env": "prod", "method": "RequestDocs", "invoices": raw}))
+    erp = tmp_path / "erp.csv"
+    erp.write_text("mark,amount\n")
+    code, out, _ = run(capsys, "reconcile", "--file", str(erp), "--mydata-json", str(saved))
+    r = json.loads(out)
+    assert code == 0 and sorted(d["mark"] for d in r["missingInErp"]) == ["400000000000302", "400000000000303"]
+    assert r["summary"]["superseded"] == 1
+
+
 def test_reconcile_rejects_summary_json(tmp_path, creds, monkeypatch, capsys):
     install(monkeypatch, DOCS_ROUTES)
     _, out, _ = run(capsys, "docs", "--format", "summary")

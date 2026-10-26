@@ -51,6 +51,7 @@ Not in the spec, but seen on `mydataapidev.aade.gr` and handled by the CLI:
 ## Observed on production (read-only run, 26 Oct 2026)
 
 - Comparing invoice-level reads with RequestMyExpenses/RequestMyIncome per invoice type: 14.4, 14.30 and 2.2 matched exactly. Self-billed documents (`selfPricing` = true) returned by RequestDocs are counted in the recipient's **income** book; delivery notes 9.3 are in neither book; recipient-entered 13.1/13.2 documents are **not** in RequestMyExpenses; book rows show credit notes (5.2) as negative values. `mydata.py` follows the same grouping.
+- A supplier's invoice transmitted twice (same `uid`, two MARKs) is returned twice by RequestDocs, neither with `cancelledByMark`; RequestMyExpenses counts it once. `mydata.py` keeps the highest MARK per `uid`.
 - Wrapping and rate limiting behaved as on the test environment.
 
 ## v2.0.2 vs v2.0.1 / v2.0.0

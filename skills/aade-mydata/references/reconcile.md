@@ -40,6 +40,8 @@ Amounts are compared as absolute values, so credit notes exported as negatives s
 
 Both live sides call RequestDocs and RequestTransmittedDocs and keep the documents of that book (rule in [books.md](books.md)); saved `--mydata-json` files are filtered the same way using their `method`. The AFM compared is the other party's: the **issuer's** on the expenses side and on self-billed income (the customer issued it), otherwise the **counterpart's**. AFMs are compared after dropping spaces, dots, dashes and a Greek `EL`/`GR` prefix; other country prefixes are kept (`US987654321`), since foreign suppliers on 14.x documents carry them. With `--from/--to`, both sides are limited to that issue-date range.
 
+Re-sent invoices (same `uid`, new MARK) count once: the highest MARK is kept and the older copies are listed under `superseded`, also for saved files created before this was added. An ERP row that still carries the old MARK is matched to the kept invoice and reported as `mismatched` with `ERP has superseded MARK ...`, so the ERP can be updated.
+
 When an ERP row has no match but exactly one unmatched myDATA invoice has the same AFM and date, its `note` says `possible match: myDATA MARK ... but amount ...`; it usually means a typo or a fee/rounding difference.
 
 ## Output
@@ -52,6 +54,7 @@ When an ERP row has no match but exactly one unmatched myDATA invoice has the sa
   "missingInMyData": [{"erpLine": 5, "mark": "...", "afm": "...", "amount": "15.50", "note": ""}],
   "missingInErp": [...],
   "cancelledInMyData": [...],
+  "superseded": [{"mark": "...", "supersededBy": "...", "uid": "..."}],
   "summary": {"matched": 2, "mismatched": 1, "missingInMyData": 1, "missingInErp": 0, "cancelledInMyData": 1, "erpRows": 4, "myDataInvoices": 4}
 }
 ```

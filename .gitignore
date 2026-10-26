@@ -13,3 +13,4 @@ xsd/
 # working files with real data
 data/
 *.mydata.json
+.DS_Store

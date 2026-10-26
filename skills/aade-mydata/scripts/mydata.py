@@ -303,11 +303,46 @@ def request_docs(env, endpoint, args):
     for root in fetch_pages(env, endpoint, params):
         pages += 1
         merge_requested_doc(root, result, keys)
+    result["invoices"], result["superseded"] = drop_superseded(result["invoices"])
     if args.counterpart:
         result["invoices"] = [i for i in result["invoices"] if args.counterpart in (
             party_vat(i, "issuer"), party_vat(i, "counterpart"))]
     return {"env": env, "method": endpoint, "specVersion": SPEC_VERSION, "pages": pages,
             "params": {k: v for k, v in params.items() if v}, **result}
+
+
+def drop_superseded(invoices):
+    """Keep one transmission per invoice uid.
+
+    A supplier that re-sends an invoice with the same identifying fields (same uid) gets a new
+    MARK; AADE keeps the latest as valid and voids the earlier one (spec §4.1.1), but
+    RequestDocs still returns both, without cancelledByMark. Keep the highest MARK per uid.
+    Explicitly cancelled copies (cancelledByMark) are left alone; they are reported as cancelled.
+    Returns (kept, superseded) where superseded lists {mark, supersededBy, uid}.
+    """
+    latest = {}
+    for inv in invoices:
+        uid = inv.get("uid")
+        if uid and not inv.get("cancelledByMark") and (
+                uid not in latest or _mark_int(inv) > _mark_int(latest[uid])):
+            latest[uid] = inv
+    kept, superseded = [], []
+    for inv in invoices:
+        uid = inv.get("uid")
+        if uid in latest and latest[uid] is not inv and not inv.get("cancelledByMark"):
+            if inv.get("mark") != latest[uid].get("mark"):
+                superseded.append({"mark": inv.get("mark", ""), "supersededBy": latest[uid].get("mark", ""),
+                                   "uid": uid})
+            continue
+        kept.append(inv)
+    return kept, superseded
+
+
+def _mark_int(inv):
+    try:
+        return int(inv.get("mark") or 0)
+    except ValueError:
+        return 0
 
 
 def merge_requested_doc(root, result, keys):
@@ -453,6 +488,7 @@ def book_invoices(env, args, side):
     received["expensesClassifications"].extend(own["expensesClassifications"])
     received["incomeClassifications"].extend(own["incomeClassifications"])
     received["pages"] += own["pages"]
+    received["superseded"].extend(own["superseded"])
     received["method"] = f"RequestDocs+RequestTransmittedDocs ({side})"
     received["excluded"] = excluded
     return received
@@ -839,7 +875,7 @@ def read_erp_csv(path):
     return rows
 
 
-def reconcile(erp_rows, invoices, side, tolerance=Decimal("0.01")):
+def reconcile(erp_rows, invoices, side, tolerance=Decimal("0.01"), superseded=()):
     docs = []
     for inv in invoices:
         # The other party: the issuer on expenses (and on self-billed income, where the
@@ -852,7 +888,9 @@ def reconcile(erp_rows, invoices, side, tolerance=Decimal("0.01")):
                      "invoiceType": s["invoiceType"], "series": s["series"], "aa": s["aa"],
                      "cancelled": bool(s["cancelledByMark"]), "used": False})
     by_mark = {d["mark"]: d for d in docs if d["mark"]}
-    out = {"matched": [], "mismatched": [], "missingInMyData": [], "missingInErp": [], "cancelledInMyData": []}
+    replaced = {s["mark"]: s["supersededBy"] for s in superseded}
+    out = {"matched": [], "mismatched": [], "missingInMyData": [], "missingInErp": [],
+           "cancelledInMyData": [], "superseded": list(superseded)}
 
     def same_amount(a, b):
         return a is not None and b is not None and abs(a - b) <= tolerance
@@ -860,11 +898,14 @@ def reconcile(erp_rows, invoices, side, tolerance=Decimal("0.01")):
     pending = []
     for row in erp_rows:
         doc = by_mark.get(row["mark"]) if row["mark"] else None
+        diffs = []
+        if doc is None and row["mark"] in replaced and replaced[row["mark"]] in by_mark:
+            doc = by_mark[replaced[row["mark"]]]
+            diffs.append(f"ERP has superseded MARK {row['mark']}; AADE kept {doc['mark']} (same invoice re-sent)")
         if doc is None:
             pending.append(row)
             continue
         doc["used"] = True
-        diffs = []
         if not same_amount(row["amount"], doc["amount"]):
             diffs.append(f"amount ERP {row['amount']} vs myDATA {doc['amount']}")
         if row["afm"] and doc["afm"] and row["afm"] != doc["afm"]:
@@ -936,17 +977,19 @@ def cmd_reconcile(args):
                 if i.get("mark") not in seen:
                     seen.add(i.get("mark"))
                     invoices.append(i)
+        invoices, superseded = drop_superseded(invoices)  # files saved before deduplication
     else:
         if not (args.date_from and args.date_to):
             raise MyDataError("reconcile needs --from and --to (or --mydata-json).", 2)
         env = get_env(args.env)
         args.mark, args.max_mark, args.inv_type, args.counterpart = 0, None, None, None
-        invoices = book_invoices(env, args, args.side)["invoices"]
+        book = book_invoices(env, args, args.side)
+        invoices, superseded = book["invoices"], book["superseded"]
     if args.date_from and args.date_to:
         lo, hi = parse_date(args.date_from).isoformat(), parse_date(args.date_to).isoformat()
         erp_rows = [r for r in erp_rows if not r["date"] or lo <= r["date"] <= hi]
         invoices = [i for i in invoices if lo <= (i.get("invoiceHeader") or {}).get("issueDate", "")[:10] <= hi]
-    result = reconcile(erp_rows, invoices, args.side, Decimal(str(args.tolerance)))
+    result = reconcile(erp_rows, invoices, args.side, Decimal(str(args.tolerance)), superseded)
     emit_json({"env": env, "side": args.side, **result})
     return 0
 
