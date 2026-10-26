@@ -1,0 +1,17 @@
+{
+  "name": "eigen-lp",
+  "description": "Agent Skills by EIGEN LAB (eigen.gr) for Greek businesses and accountants.",
+  "owner": {
+    "name": "EIGEN LAB",
+    "url": "https://eigen.gr"
+  },
+  "plugins": [
+    {
+      "name": "aade-mydata",
+      "source": "./",
+      "description": "Read AADE myDATA e-books, propose and send expense classifications, reconcile with ERP/bank exports.",
+      "category": "accounting",
+      "tags": ["aade", "mydata", "greece", "accounting"]
+    }
+  ]
+}

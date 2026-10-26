@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AADE sample "RequestUpdatedExpClassResponse.xml" (aade.gr/sites/default/files/2023-07/), AFM replaced with a placeholder.
+     Kept as published: the ecls: prefix on expensesInvoiceClassification does not match requestedInvoicesDoc-v2.0.2.xsd,
+     which is why mydata.py parses responses namespace-agnostically. -->
+<RequestedDoc
+	xmlns:icls="https://www.aade.gr/myDATA/incomeClassificaton/v1.0"	xmlns:ecls="https://www.aade.gr/myDATA/expensesClassificaton/v1.0"	xmlns="http://www.aade.gr/myDATA/invoice/v1.0">
+	<expensesClassificationsDoc>
+		<ecls:expensesInvoiceClassification>
+			<ecls:invoiceMark>400001906508696</ecls:invoiceMark>
+			<ecls:classificationMark>400001912586845</ecls:classificationMark>
+			<ecls:entityVatNumber>999999999</ecls:entityVatNumber>
+			<ecls:transactionMode>2</ecls:transactionMode>
+			<ecls:classificationPostMode>0</ecls:classificationPostMode>
+		</ecls:expensesInvoiceClassification>
+	</expensesClassificationsDoc>
+</RequestedDoc>

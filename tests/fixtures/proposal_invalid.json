@@ -1,0 +1,13 @@
+{
+  "postPerInvoice": true,
+  "invoices": [
+    {
+      "mark": 400000000000101,
+      "invType": "1.1",
+      "classifications": [
+        {"type": "E3_585_016", "category": "category2_1", "amount": "100.00"},
+        {"type": "VAT_361", "amount": "100.00"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture. Fields follow section 6.3 (RequestedBookInfo) of the official ERP spec v2.0.2. -->
+<RequestedBookInfo xmlns="http://www.aade.gr/myDATA/invoice/v1.0">
+  <continuationToken>
+    <nextPartitionKey>PK-B1</nextPartitionKey>
+    <nextRowKey>RK-B1</nextRowKey>
+  </continuationToken>
+  <bookInfo>
+    <counterVatNumber>999999999</counterVatNumber>
+    <issueDate>2026-10-05T00:00:00</issueDate>
+    <invType>1.1</invType>
+    <selfpricing>false</selfpricing>
+    <netValue>100</netValue>
+    <vatAmount>24</vatAmount>
+    <grossValue>124</grossValue>
+    <count>1</count>
+    <minMark>400000000000101</minMark>
+    <maxMark>400000000000101</maxMark>
+  </bookInfo>
+</RequestedBookInfo>

@@ -1,0 +1,23 @@
+{
+  "postPerInvoice": true,
+  "invoices": [
+    {
+      "mark": 400000000000101,
+      "invType": "1.1",
+      "note": "Goods for resale from 999999999, net 100.00 + VAT 24% 24.00",
+      "classifications": [
+        {"type": "E3_102_001", "category": "category2_1", "amount": "100.00"},
+        {"type": "VAT_361", "amount": "100.00", "vatAmount": "24.00", "vatCategory": 1}
+      ]
+    },
+    {
+      "mark": 400000000000102,
+      "invType": "2.1",
+      "note": "Accounting services from 777777777, net 250.00 + VAT 24% 60.00",
+      "classifications": [
+        {"type": "E3_585_009", "category": "category2_3", "amount": 250},
+        {"type": "VAT_361", "amount": 250, "vatAmount": 60, "vatCategory": 1}
+      ]
+    }
+  ]
+}

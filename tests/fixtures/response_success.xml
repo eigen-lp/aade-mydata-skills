@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture following response-v2.0.2.xsd (ResponseDoc). -->
+<ResponseDoc>
+  <response>
+    <index>1</index>
+    <invoiceMark>400000000000101</invoiceMark>
+    <classificationMark>400000000000501</classificationMark>
+    <statusCode>Success</statusCode>
+  </response>
+</ResponseDoc>

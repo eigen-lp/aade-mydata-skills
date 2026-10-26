@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.env
+.env.*
+*.local.json
+# downloaded AADE schemas/spreadsheets are not vendored
+xsd/
+*.xsd
+*.xlsx
+# working files with real data
+data/
+*.mydata.json

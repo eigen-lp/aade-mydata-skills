@@ -1,0 +1,18 @@
+{
+  "invoices": [
+    {
+      "mark": 400000000000101,
+      "invType": "1.1",
+      "lines": [
+        {
+          "lineNumber": 1,
+          "classifications": [
+            {"type": "E3_102_001", "category": "category2_1", "amount": "100.00"},
+            {"type": "VAT_361", "amount": "100.00"}
+          ]
+        }
+      ]
+    },
+    {"mark": 400000000000102, "invType": "2.1", "transactionMode": 1}
+  ]
+}

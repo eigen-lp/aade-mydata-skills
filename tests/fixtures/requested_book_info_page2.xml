@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RequestedBookInfo xmlns="http://www.aade.gr/myDATA/invoice/v1.0">
+  <bookInfo>
+    <counterVatNumber>777777777</counterVatNumber>
+    <issueDate>2026-10-12T00:00:00</issueDate>
+    <invType>2.1</invType>
+    <netValue>250</netValue>
+    <vatAmount>60</vatAmount>
+    <grossValue>310</grossValue>
+    <count>1</count>
+    <minMark>400000000000102</minMark>
+    <maxMark>400000000000102</maxMark>
+  </bookInfo>
+</RequestedBookInfo>

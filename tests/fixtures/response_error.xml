@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic fixture following response-v2.0.2.xsd (ResponseDoc). -->
+<ResponseDoc>
+  <response>
+    <index>1</index>
+    <errors>
+      <error>
+        <message>Classification type E3_585_016 is not allowed with category category2_1</message>
+        <code>215</code>
+      </error>
+    </errors>
+    <statusCode>ValidationError</statusCode>
+  </response>
+</ResponseDoc>

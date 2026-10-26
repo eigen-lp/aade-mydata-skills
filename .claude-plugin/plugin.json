@@ -1,0 +1,14 @@
+{
+  "name": "aade-mydata",
+  "displayName": "AADE myDATA",
+  "description": "Read AADE myDATA e-books, propose and send expense classifications (E3/VAT), and reconcile myDATA with ERP or bank exports. Test environment by default.",
+  "version": "0.1.0",
+  "author": {
+    "name": "EIGEN LAB",
+    "url": "https://eigen.gr"
+  },
+  "homepage": "https://github.com/eigen-lp/aade-mydata-skills",
+  "repository": "https://github.com/eigen-lp/aade-mydata-skills",
+  "license": "MIT",
+  "keywords": ["aade", "mydata", "greece", "accounting", "invoices", "e-books", "tax"]
+}
