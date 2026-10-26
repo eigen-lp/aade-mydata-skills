@@ -220,6 +220,21 @@ def test_out_writes_private_file(creds, monkeypatch, capsys, tmp_path):
     assert (target.stat().st_mode & 0o777) == 0o600
 
 
+def test_out_tightens_existing_file_and_refuses_symlinks(creds, monkeypatch, capsys, tmp_path):
+    install(monkeypatch, DOCS_ROUTES)
+    existing = tmp_path / "old.json"
+    existing.write_text("stale")
+    existing.chmod(0o644)
+    code, _, _ = run(capsys, "docs", "--out", str(existing))
+    assert code == 0 and (existing.stat().st_mode & 0o777) == 0o600
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep me")
+    link = tmp_path / "link.json"
+    link.symlink_to(victim)
+    code, _, err = run(capsys, "docs", "--out", str(link))
+    assert code == 2 and "symlinks are refused" in err and victim.read_text() == "keep me"
+
+
 def test_check_reports_without_printing_secrets(creds, monkeypatch, capsys):
     install(monkeypatch, {"RequestMyIncome": "requested_book_info_page2.xml"})
     code, out, _ = run(capsys, "check")

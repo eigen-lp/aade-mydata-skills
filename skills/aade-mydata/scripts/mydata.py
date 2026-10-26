@@ -113,6 +113,18 @@ def load_env_file(path):
             os.environ[key] = value
 
 
+def open_private(path, mode="w"):
+    """Open a file for writing that only the owner can read: refuses symlinks and
+    tightens the mode of an existing file too (os.open's mode only applies on creation)."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags, 0o600)
+    except OSError as e:
+        raise MyDataError(f"Cannot write {path}: {e.strerror} (symlinks are refused)", 2)
+    os.fchmod(fd, 0o600)
+    return open(fd, mode, **({} if "b" in mode else {"encoding": "utf-8"}))
+
+
 def get_env(args_env=None):
     env = (args_env or os.environ.get("MYDATA_ENV") or "test").strip().lower()
     if env not in BASE_URLS:
@@ -834,7 +846,8 @@ def cmd_classify(args):
     env = get_env(args.env)
     invoices, per_invoice, xml, code = prepare_classification(args, env)
     if args.xml_out:
-        Path(args.xml_out).write_bytes(xml)
+        with open_private(args.xml_out, "wb") as fh:
+            fh.write(xml)
     if args.xml_only:
         sys.stdout.write(xml.decode("utf-8"))
         return 0
@@ -1119,8 +1132,7 @@ def main(argv=None):
         if args.env_file:
             load_env_file(args.env_file)
         if args.out:
-            fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with open(fd, "w", encoding="utf-8") as fh, contextlib.redirect_stdout(fh):
+            with open_private(args.out) as fh, contextlib.redirect_stdout(fh):
                 code = dispatch(args)
             print(f"wrote {args.out}", file=sys.stderr)
             return code
