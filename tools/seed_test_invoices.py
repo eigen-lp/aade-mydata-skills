@@ -5,7 +5,7 @@ Uses recipient-entered document types (13.1, 14.4) so a single test user can cre
 invoices that land in its own expense books, then exercise `classify` and `reconcile`.
 Always targets https://mydataapidev.aade.gr/ regardless of MYDATA_ENV. Not part of the skill.
 
-    set -a; . ./.env.dev; set +a
+    set -a; . ./.env.dev; set +a   # this dev tool reads credentials from the environment
     python3 tools/seed_test_invoices.py                 # print the XML only (AFM from $MYDATA_TEST_AFM)
     python3 tools/seed_test_invoices.py --send --erp-out erp.csv
 """

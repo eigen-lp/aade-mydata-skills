@@ -14,7 +14,7 @@ This is guidance for drafting proposals, not tax advice. The business's accounta
 2. Decide what the expense **is** for this business (goods for resale, raw materials, services, general expense, fixed asset...). Ask the user when the business purpose isn't obvious from the supplier and description; don't guess on assets vs. expenses or deductible vs. non-deductible VAT.
 3. Pick the category (table A), then an E3 code allowed for that category **and** invoice type in `expense-combinations.json` (table B gives the meaning of common codes).
 4. Add the VAT classification (table C), unless a rule below says not to.
-5. Write the proposal JSON, run `classify --file proposal.json` (dry run), fix every `error:`, then show the table and ask for an explicit yes before `--send`.
+5. Write the proposal JSON, run `classify --file proposal.json` (dry run), fix every `error:`, then show the table and ask for an explicit yes. Only then run the `send ... --confirm <code>` command that `classify` printed; `send` refuses if the proposal, `--mark` filter or environment changed since the dry run.
 
 ## Proposal file
 

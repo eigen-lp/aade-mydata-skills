@@ -45,13 +45,13 @@ Requirements: Python 3.9 or newer (standard library only, nothing to `pip instal
 
 ## Production
 
-Production uses separate credentials, created after logging in with TAXISnet at <https://www1.aade.gr/saadeapps2/bookkeeper-web> («Φόρμα εγγραφής στο myDATA REST API»). Set `MYDATA_ENV=prod` or pass `--env prod`. Reading works the same; sending classifications to production additionally needs `--send --yes-production`, which Claude adds only when you explicitly confirm that the data is for your real books. Accountants acting for a client add `--entity <client AFM>`.
+Production uses separate credentials, created after logging in with TAXISnet at <https://www1.aade.gr/saadeapps2/bookkeeper-web> («Φόρμα εγγραφής στο myDATA REST API»). Set `MYDATA_ENV=prod` or pass `--env prod`. Reading works the same; sending classifications to production additionally needs `--yes-production` on `send`, which Claude adds only when you explicitly confirm that the data is for your real books. You can keep each environment's credentials in a git-ignored file and pass it with `--env-file .env.prod`. Accountants acting for a client add `--entity <client AFM>`.
 
 ## Safety
 
 - Keys stay in environment variables. The script never prints them, and the skill tells Claude never to ask for them in chat.
-- Everything except `classify --send` is read-only.
-- `classify` is a dry run by default: it validates the proposal (codes, amounts, AADE's type/category/E3 combinations) and prints a table plus the exact XML. Claude must show you that table and get an explicit yes before sending.
+- **Reads run without asking; writes always ask.** The skill pre-approves its read commands (`check`, `docs`, `transmitted`, `income`, `expenses`, `classify`, `reconcile`), so Claude runs them straight away. The only write, `send`, isn't pre-approved: Claude Code shows you the command and asks before it runs.
+- `classify` is a dry run: it validates the proposal (codes, amounts, AADE's type/category/E3 combinations) and prints a table, the exact XML and a confirmation code. Claude must show you that table and get an explicit yes; `send` only accepts the matching code, so what goes to AADE is exactly what you approved.
 - Production writes need the `--yes-production` flag.
 - Re-sending a classification for the same invoice replaces the previous one in myDATA.
 
@@ -64,8 +64,9 @@ S=skills/aade-mydata/scripts/mydata.py
 python3 $S check
 python3 $S docs --from 2026-10-01 --to 2026-10-31 --format summary
 python3 $S expenses --from 2026-10-01 --to 2026-10-31 --format csv
-python3 $S classify --file proposal.json            # dry run
-python3 $S classify --file proposal.json --send     # test environment
+python3 $S classify --file proposal.json                     # dry run, prints a confirmation code
+python3 $S send --file proposal.json --confirm <code>        # the only write (test environment)
+python3 $S docs --env-file .env.prod --from 2026-01-01 --to 2026-10-31 --out docs.json
 python3 $S reconcile --from 2026-10-01 --to 2026-10-31 --file purchases.csv
 ```
 

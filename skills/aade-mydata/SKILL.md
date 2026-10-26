@@ -3,41 +3,59 @@ name: aade-mydata
 description: Read a Greek business's AADE myDATA e-books (invoices received and issued, income and expense totals), propose and send expense classifications (χαρακτηρισμοί εξόδων, E3 and VAT codes), and reconcile myDATA against ERP, accounting or bank CSV exports. Use when the user mentions myDATA, ΑΑΔΕ, ηλεκτρονικά βιβλία, MARK/ΜΑΡΚ, χαρακτηρισμός εξόδων, E3 codes, or matching invoices against their books.
 license: MIT
 compatibility: Python 3.9+ (standard library only) and network access to mydataapidev.aade.gr or mydatapi.aade.gr.
+allowed-tools:
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py --help)
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py check *)
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py docs *)
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py transmitted *)
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py income *)
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py expenses *)
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py classify *)
+  - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py reconcile *)
 metadata:
-  version: 0.1.0
+  version: 0.2.0
   spec: myDATA REST API v2.0.2 (ERP channel)
   homepage: https://github.com/eigen-lp/aade-mydata-skills
 ---
 
 # AADE myDATA
 
-Everything goes through `${CLAUDE_SKILL_DIR}/scripts/mydata.py` (stdlib Python, JSON/CSV out). Run `python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py --help` for flags. Default environment is **test**.
+Everything goes through `python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py <command>` (stdlib Python, JSON/CSV out). Default environment is **test**. Run each command on its own, exactly in that form: no `cd`, `&&`, `;`, pipes, `source` or `>` redirects. Load credentials with `--env-file <path>` and save output with `--out <file>` instead.
 
-## Safety rules (always)
+## Reads vs writes
 
-1. **Never ask for keys in chat.** Credentials live in environment variables `MYDATA_USER_ID` and `MYDATA_SUBSCRIPTION_KEY` (plus optional `MYDATA_ENV`). If they are missing, tell the user to set them in their shell and point to [references/setup.md](references/setup.md). If the user pastes a key anyway, don't repeat it and tell them to rotate it.
-2. **Read freely, write only after an explicit yes.** Before any `--send`, run the dry run, show the user the table it prints (MARK, type, category, amount, VAT) and the target environment, and wait for a clear "yes" to that exact table. A yes covers that table only; any change means a new dry run and a new yes.
-3. **Production needs the flag.** Sending to production needs `--env prod --send --yes-production`. Only add `--yes-production` when the user explicitly says this is for the real books.
-4. **The accountant decides.** Present classifications as proposals. Recommend that the business's accountant (λογιστής) reviews them before sending, especially in production. This is not tax advice, and the tool is not affiliated with AADE.
-5. Never use `transactionMode` (reject/deviation) unless the user explicitly asks to reject or dispute a specific invoice.
+- **Reads: just run them.** `check`, `docs`, `transmitted`, `income`, `expenses`, `reconcile` and `classify` (a dry run) never change anything in myDATA. Run them without asking the user first.
+- **The only write is `send`** (SendExpensesClassification). It is deliberately not pre-approved, so Claude Code asks the user before it runs. Before you even propose it:
+  1. Run `classify` and show the user the table it prints and the target environment (test or PRODUCTION).
+  2. Ask for an explicit yes to that exact table, and wait for it. A yes covers that table only.
+  3. Run the `send` command `classify` printed, with its `--confirm` code. The code fingerprints the environment and XML, so `send` refuses if anything changed since the dry run; then dry-run again and ask again. Never compute or reuse a code yourself.
+- Production also needs `--yes-production` on `send`. Only use it when the user has said this is for their real books.
 
-## Workflows
+## Other rules
 
-| Task | Command | Read first |
+1. **Never ask for keys in chat.** Credentials come from `MYDATA_USER_ID` / `MYDATA_SUBSCRIPTION_KEY` (and `MYDATA_ENV`) in the environment or an `--env-file`. If they're missing, point to [references/setup.md](references/setup.md). If the user pastes a key anyway, don't repeat it and suggest rotating it.
+2. **The accountant decides.** Present classifications as proposals and recommend the business's accountant (λογιστής) reviews them, especially for production. Not tax advice; not affiliated with AADE.
+3. Never use `transactionMode` (reject/deviation) unless the user explicitly asks to reject or dispute a specific invoice.
+4. Show summaries and counts, not raw dumps of the user's books, unless asked. Save large output with `--out`.
+
+## Commands
+
+| Task | Command (prefix: `python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py`) | Read first |
 |---|---|---|
-| Check setup | `mydata.py check` | [setup.md](references/setup.md) |
-| List expense invoices (received + own 13.x/14.x entries) | `mydata.py docs --include-self-entered --from 2026-10-01 --to 2026-10-31 --format summary` | [books.md](references/books.md) |
-| List invoices you issued | `mydata.py transmitted --from ... --to ...` | [books.md](references/books.md) |
-| Income / expense book totals | `mydata.py income\|expenses --from ... --to ... [--counterpart AFM] [--format csv]` | [books.md](references/books.md) |
-| Propose and send expense classifications | `mydata.py classify --file proposal.json` then `--send` | [classify.md](references/classify.md) |
-| Reconcile with ERP/bank CSV | `mydata.py reconcile --from ... --to ... --file erp.csv` | [reconcile.md](references/reconcile.md) |
+| Check setup | `check [--env-file .env.prod]` | [setup.md](references/setup.md) |
+| Expense documents (received + own 13.x/14.x) | `docs --include-self-entered --from 2026-10-01 --to 2026-10-31 --format summary` | [books.md](references/books.md) |
+| Documents you issued | `transmitted --from ... --to ... --format summary` | [books.md](references/books.md) |
+| Income / expense book totals | `income\|expenses --from ... --to ... [--counterpart AFM] [--format csv]` | [books.md](references/books.md) |
+| Validate a classification proposal (dry run) | `classify --file proposal.json` | [classify.md](references/classify.md) |
+| **Write** the approved classification | `send --file proposal.json --confirm <code> [--yes-production]` | [classify.md](references/classify.md) |
+| Reconcile with an ERP/bank CSV | `reconcile --from ... --to ... --file erp.csv` | [reconcile.md](references/reconcile.md) |
 | Endpoints, fields, errors | | [api.md](references/api.md) |
 
-Accountants acting for a client add `--entity <client AFM>` to any command.
+All commands take `--env test|prod`, `--env-file PATH`, `--out PATH`, and `--entity <client AFM>` for accountants acting for a client.
 
-## Classification loop (short version)
+## Classification loop
 
 1. `docs --include-self-entered --format summary` for the period (the expense book view: no self-billed income, no delivery notes); pick invoices with `classified: no` that aren't cancelled.
-2. For each, get the full invoice (`docs --format json`, filter by MARK) and draft a proposal JSON following [classify.md](references/classify.md). Choose codes from `references/expense-combinations.json` for that invoice type; explain each choice in one line.
-3. `classify --file proposal.json` (dry run). Fix any `error:` lines.
-4. Show the table, say which environment, ask for an explicit yes, then `--send`. Report each `statusCode` and `classificationMark`.
+2. Read the full invoices (`docs --out docs.json`, then read the file) and draft a proposal JSON following [classify.md](references/classify.md). Choose codes from `references/expense-combinations.json` for each invoice type; explain each choice in one line.
+3. `classify --file proposal.json`. Fix any `error:` lines and re-run.
+4. Show the table and environment, get an explicit yes, then run the printed `send ... --confirm <code>` command. Report each `statusCode` and `classificationMark`.

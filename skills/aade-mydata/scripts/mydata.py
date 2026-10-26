@@ -12,7 +12,9 @@ Credentials come from environment variables and are never printed:
 Run `python3 mydata.py --help` for the subcommands.
 """
 import argparse
+import contextlib
 import csv
+import hashlib
 import io
 import json
 import os
@@ -27,7 +29,7 @@ from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SPEC_VERSION = "2.0.2"
 
 BASE_URLS = {
@@ -88,6 +90,27 @@ class MyDataError(Exception):
 
 
 # --------------------------------------------------------------------------- config
+
+
+ENV_FILE_KEYS = {"MYDATA_USER_ID", "MYDATA_SUBSCRIPTION_KEY", "MYDATA_ENV"}
+
+
+def load_env_file(path):
+    """Read MYDATA_* settings from a dotenv-style file (KEY=VALUE lines) into the environment."""
+    try:
+        lines = Path(path).expanduser().read_text(encoding="utf-8").splitlines()
+    except OSError as e:
+        raise MyDataError(f"Cannot read --env-file {path}: {e.strerror}", 2)
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.removeprefix("export ").split("=", 1)
+        key, value = key.strip(), value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key in ENV_FILE_KEYS:
+            os.environ[key] = value
 
 
 def get_env(args_env=None):
@@ -777,13 +800,8 @@ def parse_response_doc(data):
     return results
 
 
-def cmd_classify(args):
-    env = get_env(args.env)
-    if args.send and env == "prod" and not args.yes_production:
-        raise MyDataError(
-            "Refusing to send to PRODUCTION without --yes-production.\n"
-            "Production classifications update the taxpayer's real books. Review the dry-run table "
-            "with the accountant first, then re-run with --env prod --send --yes-production.", 2)
+def prepare_classification(args, env):
+    """Load, filter and validate a proposal; return (invoices, per_invoice, xml, code)."""
     try:
         proposal = json.loads(Path(args.file).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
@@ -802,17 +820,50 @@ def cmd_classify(args):
             print(f"error: {e}", file=sys.stderr)
         raise MyDataError(f"{len(errors)} problem(s) in the proposal; nothing was sent.", 6)
     xml = build_classification_xml(invoices)
+    return invoices, per_invoice, xml, confirmation_code(env, per_invoice, xml)
+
+
+def confirmation_code(env, per_invoice, xml):
+    """Short fingerprint of exactly what `send` would transmit, and where."""
+    digest = hashlib.sha256(f"{env}\n{per_invoice}\n".encode() + xml).hexdigest()
+    return digest[:10]
+
+
+def cmd_classify(args):
+    """Dry run only: validate, print the table, the XML and the confirmation code."""
+    env = get_env(args.env)
+    invoices, per_invoice, xml, code = prepare_classification(args, env)
     if args.xml_out:
         Path(args.xml_out).write_bytes(xml)
-    if not args.send:
-        if args.xml_only:
-            sys.stdout.write(xml.decode("utf-8"))
-        else:
-            print("DRY RUN - nothing sent. Review this with the user (and their accountant):\n")
-            print(plan_table(invoices, env, per_invoice))
-            print("\nXML body that --send would POST:\n")
-            sys.stdout.write(xml.decode("utf-8"))
+    if args.xml_only:
+        sys.stdout.write(xml.decode("utf-8"))
         return 0
+    marks = "".join(f" --mark {m}" for m in args.mark or [])
+    prod = " --yes-production" if env == "prod" else ""
+    print("DRY RUN - nothing sent. Review this with the user (and their accountant):\n")
+    print(plan_table(invoices, env, per_invoice))
+    print("\nXML body that `send` would POST:\n")
+    sys.stdout.write(xml.decode("utf-8"))
+    print(f"\nConfirmation code: {code}")
+    print("Only after the user explicitly approves this exact table, run:")
+    print(f"  mydata.py send --env {env} --file {args.file}{marks} --confirm {code}{prod}")
+    return 0
+
+
+def cmd_send(args):
+    """The only write: SendExpensesClassification, for a proposal confirmed by code."""
+    env = get_env(args.env)
+    if env == "prod" and not args.yes_production:
+        raise MyDataError(
+            "Refusing to send to PRODUCTION without --yes-production.\n"
+            "Production classifications update the taxpayer's real books. Review the dry-run table "
+            "with the accountant first, then re-run with --env prod --yes-production.", 2)
+    invoices, per_invoice, xml, code = prepare_classification(args, env)
+    if args.confirm != code:
+        raise MyDataError(
+            f"Confirmation code mismatch: expected the code printed by `classify` for this exact "
+            f"proposal and environment ({env}). The file, --mark filter or --env changed since the "
+            "dry run, or the code is wrong. Run `classify` again and get the user's approval.", 2)
     print(plan_table(invoices, env, per_invoice), file=sys.stderr)
     params = {"postPerInvoice": "true"} if per_invoice else None
     results = parse_response_doc(call(env, "POST", "SendExpensesClassification", params, xml))
@@ -1001,6 +1052,9 @@ def build_parser():
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--env", choices=sorted(BASE_URLS), help="test (default, or $MYDATA_ENV) or prod")
     common.add_argument("--entity", metavar="AFM", help="entityVatNumber: act for this AFM (accountants)")
+    common.add_argument("--env-file", metavar="PATH",
+                        help="load MYDATA_USER_ID / MYDATA_SUBSCRIPTION_KEY / MYDATA_ENV from this file")
+    common.add_argument("--out", metavar="PATH", help="write the output to this file (mode 600) instead of stdout")
 
     p = argparse.ArgumentParser(prog="mydata.py", description=__doc__.split("\n\n")[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1033,13 +1087,19 @@ def build_parser():
         sp.add_argument("--inv-type")
         sp.add_argument("--format", choices=("json", "csv"), default="json")
 
-    sp = sub.add_parser("classify", parents=[common], help="SendExpensesClassification (dry run unless --send)")
+    sp = sub.add_parser("classify", parents=[common],
+                        help="validate a classification proposal and show what `send` would transmit (no writes)")
     sp.add_argument("--file", required=True, help="proposal JSON (see references/classify.md)")
     sp.add_argument("--mark", action="append", help="only this MARK from the file (repeatable)")
-    sp.add_argument("--send", action="store_true", help="actually transmit (default: dry run)")
-    sp.add_argument("--yes-production", action="store_true", help="required with --env prod --send")
-    sp.add_argument("--xml-only", action="store_true", help="dry run prints only the XML body")
+    sp.add_argument("--xml-only", action="store_true", help="print only the XML body")
     sp.add_argument("--xml-out", help="also write the XML body to this file")
+
+    sp = sub.add_parser("send", parents=[common],
+                        help="WRITE: SendExpensesClassification for a proposal approved after `classify`")
+    sp.add_argument("--file", required=True, help="the same proposal JSON that `classify` showed")
+    sp.add_argument("--mark", action="append", help="the same --mark filter used with `classify`")
+    sp.add_argument("--confirm", required=True, metavar="CODE", help="confirmation code printed by `classify`")
+    sp.add_argument("--yes-production", action="store_true", help="required with --env prod")
 
     sp = sub.add_parser("reconcile", parents=[common], help="match myDATA against an ERP/bank CSV")
     sp.add_argument("--file", required=True, help="ERP CSV: MARK and/or AFM, date, amount columns")
@@ -1056,24 +1116,32 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
-        if args.cmd == "check":
-            return cmd_check(args)
-        if args.cmd == "docs":
-            return cmd_docs(args, "RequestDocs")
-        if args.cmd == "transmitted":
-            return cmd_docs(args, "RequestTransmittedDocs")
-        if args.cmd == "income":
-            return cmd_book(args, "RequestMyIncome")
-        if args.cmd == "expenses":
-            return cmd_book(args, "RequestMyExpenses")
-        if args.cmd == "classify":
-            return cmd_classify(args)
-        if args.cmd == "reconcile":
-            return cmd_reconcile(args)
+        if args.env_file:
+            load_env_file(args.env_file)
+        if args.out:
+            fd = os.open(args.out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with open(fd, "w", encoding="utf-8") as fh, contextlib.redirect_stdout(fh):
+                code = dispatch(args)
+            print(f"wrote {args.out}", file=sys.stderr)
+            return code
+        return dispatch(args)
     except MyDataError as e:
         print(f"error: {redact(str(e))}", file=sys.stderr)
         return e.exit_code
-    return 2
+
+
+def dispatch(args):
+    commands = {
+        "check": cmd_check,
+        "docs": lambda a: cmd_docs(a, "RequestDocs"),
+        "transmitted": lambda a: cmd_docs(a, "RequestTransmittedDocs"),
+        "income": lambda a: cmd_book(a, "RequestMyIncome"),
+        "expenses": lambda a: cmd_book(a, "RequestMyExpenses"),
+        "classify": cmd_classify,
+        "send": cmd_send,
+        "reconcile": cmd_reconcile,
+    }
+    return commands[args.cmd](args)
 
 
 if __name__ == "__main__":

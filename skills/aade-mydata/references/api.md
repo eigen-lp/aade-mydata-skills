@@ -10,7 +10,7 @@ Source: AADE, «Τεχνική περιγραφή διεπαφών REST API γι
 | `transmitted` | GET | `RequestTransmittedDocs?` same parameters | 4.2.7 |
 | `income` | GET | `RequestMyIncome?dateFrom=&dateTo=&counterVatNumber=&entityVatNumber=&invType=&nextPartitionKey=&nextRowKey=` | 4.2.8 |
 | `expenses` | GET | `RequestMyExpenses?` same parameters | 4.2.9 |
-| `classify --send` | POST | `SendExpensesClassification[?postPerInvoice=true]`, body `ExpensesClassificationsDoc` | 4.2.3 |
+| `send` | POST | `SendExpensesClassification[?postPerInvoice=true]`, body `ExpensesClassificationsDoc` | 4.2.3 |
 
 Not used in v1 (out of scope): `SendInvoices`, `CancelInvoice`, `SendIncomeClassification`, `SendPaymentsMethod`, `RequestVatInfo`, `RequestE3Info` and all delivery-note methods.
 

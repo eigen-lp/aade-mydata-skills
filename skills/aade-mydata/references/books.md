@@ -1,13 +1,13 @@
 # Reading the books
 
-All read commands are safe: GET only, no changes in myDATA. Output is JSON on stdout (or CSV with `--format csv`); save it with `> file.json` when you want to reuse it.
+All read commands are safe: GET only, no changes in myDATA. Output is JSON on stdout (or CSV with `--format csv`); save it with `--out file.json` when you want to reuse it (the file is created readable only by you).
 
 ## Which command
 
 | Question | Command |
 |---|---|
 | Which expense invoices do I have this month? Which are unclassified? | `docs --include-self-entered --from 2026-10-01 --to 2026-10-31 --format summary` |
-| Full detail of received invoices (lines, VAT, classifications) | `docs --from ... --to ... > docs.json` |
+| Full detail of received invoices (lines, VAT, classifications) | `docs --from ... --to ... --out docs.json` |
 | What did I (or my provider) transmit? | `transmitted --from ... --to ...` |
 | Expense / income totals per supplier, date and invoice type | `expenses --from ... --to ...`, `income --from ... --to ...` |
 | Only one counterparty | add `--counterpart <AFM>` |

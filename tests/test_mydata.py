@@ -5,6 +5,7 @@ Set AADE_XSD_DIR to a folder with the official v2.0.2 XSDs to also run the schem
 """
 import importlib.util
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -72,6 +73,20 @@ def run(capsys, *argv):
     code = mydata.main(list(argv))
     out, err = capsys.readouterr()
     return code, out, err
+
+
+PER_INVOICE = str(FIX / "proposal_per_invoice.json")
+
+
+def code_for(capsys, *argv):
+    """Run the classify dry run and return the confirmation code it prints."""
+    code, out, err = run(capsys, "classify", *argv)
+    assert code == 0, err
+    return re.search(r"Confirmation code: ([0-9a-f]{10})", out).group(1)
+
+
+def send(capsys, *argv, env_args=(), send_only=()):
+    return run(capsys, "send", *argv, *env_args, *send_only, "--confirm", code_for(capsys, *argv, *env_args))
 
 
 DOCS_ROUTES = {"RequestDocs": ["requested_docs_page1.xml", "requested_docs_page2.xml"],
@@ -177,6 +192,34 @@ def test_paging_stops_on_repeated_token(creds, monkeypatch, capsys):
     assert code == 0 and len(fake.calls) == 2
 
 
+def test_env_file_supplies_credentials(monkeypatch, capsys, tmp_path):
+    for k in ("MYDATA_USER_ID", "MYDATA_SUBSCRIPTION_KEY", "MYDATA_ENV"):
+        monkeypatch.delenv(k, raising=False)
+    env_file = tmp_path / ".env.prod"
+    env_file.write_text(f'# comment\nexport MYDATA_ENV=prod\nMYDATA_USER_ID="{FAKE_USER}"\n'
+                        f"MYDATA_SUBSCRIPTION_KEY='{FAKE_KEY}'\nOTHER=ignored\n")
+    fake = install(monkeypatch, DOCS_ROUTES)
+    code, out, err = run(capsys, "docs", "--env-file", str(env_file))
+    assert code == 0, err
+    assert fake.calls[0]["url"].startswith("https://mydatapi.aade.gr/myDATA/")
+    assert fake.calls[0]["headers"]["Ocp-Apim-Subscription-Key"] == FAKE_KEY
+    assert "OTHER" not in os.environ and FAKE_KEY not in out + err
+
+
+def test_env_file_missing(capsys, no_network):
+    code, _, err = run(capsys, "docs", "--env-file", "/nonexistent/.env")
+    assert code == 2 and "Cannot read --env-file" in err
+
+
+def test_out_writes_private_file(creds, monkeypatch, capsys, tmp_path):
+    install(monkeypatch, DOCS_ROUTES)
+    target = tmp_path / "docs.json"
+    code, out, err = run(capsys, "docs", "--out", str(target))
+    assert code == 0 and out == "" and f"wrote {target}" in err
+    assert len(json.loads(target.read_text())["invoices"]) == 4
+    assert (target.stat().st_mode & 0o777) == 0o600
+
+
 def test_check_reports_without_printing_secrets(creds, monkeypatch, capsys):
     install(monkeypatch, {"RequestMyIncome": "requested_book_info_page2.xml"})
     code, out, _ = run(capsys, "check")
@@ -256,7 +299,7 @@ def test_wrapped_read_response_is_unwrapped(creds, monkeypatch, capsys):
 
 def test_wrapped_send_response_is_unwrapped(creds, monkeypatch, capsys):
     install(monkeypatch, {"SendExpensesClassification": "response_wrapped.xml"})
-    code, out, _ = run(capsys, "classify", "--file", str(FIX / "proposal_per_invoice.json"), "--send")
+    code, out, _ = send(capsys, "--file", PER_INVOICE)
     assert code == 7
     assert json.loads(out)["results"][0]["errors"][0]["code"] == "215"
 
@@ -277,7 +320,8 @@ def test_classify_dry_run_does_not_touch_network(monkeypatch, capsys, no_network
     assert code == 0, err
     assert out.startswith("DRY RUN")
     assert "| 400000000000101 | 1.1" in out
-    xml = out[out.index("<?xml"):]
+    end = "</ExpensesClassificationsDoc>"
+    xml = out[out.index("<?xml"):out.index(end) + len(end)]
     root = ET.fromstring(xml.encode())
     ns = {"e": mydata.ECLS_NS}
     assert root.tag == f"{{{mydata.ECLS_NS}}}ExpensesClassificationsDoc"
@@ -312,24 +356,58 @@ def test_classify_rejects_bad_combination(no_network, capsys):
 
 
 def test_production_send_requires_explicit_flag(monkeypatch, capsys, no_network):
-    # Refuses before reading credentials or touching the network.
+    # Refuses before reading credentials or touching the network, even with a valid code.
     monkeypatch.delenv("MYDATA_USER_ID", raising=False)
-    code, out, err = run(capsys, "classify", "--file", str(FIX / "proposal_per_invoice.json"),
-                         "--env", "prod", "--send")
+    code, out, err = send(capsys, "--file", PER_INVOICE, env_args=("--env", "prod"))
     assert code == 2 and out == ""
     assert "--yes-production" in err
 
 
 def test_production_send_refused_via_env_var(monkeypatch, capsys, no_network):
     monkeypatch.setenv("MYDATA_ENV", "prod")
-    code, _, err = run(capsys, "classify", "--file", str(FIX / "proposal_per_invoice.json"), "--send")
+    code, _, err = send(capsys, "--file", PER_INVOICE)
     assert code == 2 and "--yes-production" in err
 
 
+def test_classify_cannot_send(capsys, no_network):
+    with pytest.raises(SystemExit) as exc:
+        mydata.main(["classify", "--file", PER_INVOICE, "--send"])
+    assert exc.value.code == 2  # argparse: unknown option; writes only happen through `send`
+
+
+def test_classify_prints_code_and_exact_send_command(capsys, no_network):
+    code, out, _ = run(capsys, "classify", "--file", PER_INVOICE, "--env", "prod", "--mark", "400000000000101")
+    assert code == 0
+    c = re.search(r"Confirmation code: ([0-9a-f]{10})", out).group(1)
+    assert (f"mydata.py send --env prod --file {PER_INVOICE} --mark 400000000000101 --confirm {c} "
+            "--yes-production") in out
+
+
+def test_send_requires_matching_code(creds, monkeypatch, capsys, no_network, tmp_path):
+    code, _, err = run(capsys, "send", "--file", PER_INVOICE, "--confirm", "0000000000")
+    assert code == 2 and "Confirmation code mismatch" in err
+    # A code from the test-environment dry run doesn't authorise a production send...
+    test_code = code_for(capsys, "--file", PER_INVOICE)
+    code, _, err = run(capsys, "send", "--file", PER_INVOICE, "--env", "prod", "--yes-production",
+                       "--confirm", test_code)
+    assert code == 2 and "mismatch" in err
+    # ...and editing the proposal after the dry run invalidates the code.
+    edited = tmp_path / "p.json"
+    data = json.loads(Path(PER_INVOICE).read_text())
+    data["invoices"][0]["classifications"][0]["amount"] = "99.00"
+    edited.write_text(json.dumps(data))
+    code, _, err = run(capsys, "send", "--file", str(edited), "--confirm", test_code)
+    assert code == 2 and "mismatch" in err
+    # Same for sending more MARKs than were reviewed.
+    one = code_for(capsys, "--file", PER_INVOICE, "--mark", "400000000000101")
+    code, _, err = run(capsys, "send", "--file", PER_INVOICE, "--confirm", one)
+    assert code == 2 and "mismatch" in err
+
+
 def test_send_posts_same_xml_as_dry_run(creds, monkeypatch, capsys):
-    _, dry, _ = run(capsys, "classify", "--file", str(FIX / "proposal_per_invoice.json"), "--xml-only")
+    _, dry, _ = run(capsys, "classify", "--file", PER_INVOICE, "--xml-only")
     fake = install(monkeypatch, {"SendExpensesClassification": "response_success.xml"})
-    code, out, err = run(capsys, "classify", "--file", str(FIX / "proposal_per_invoice.json"), "--send")
+    code, out, err = send(capsys, "--file", PER_INVOICE)
     assert code == 0, err
     call = fake.calls[0]
     assert call["method"] == "POST"
@@ -344,13 +422,13 @@ def test_send_posts_same_xml_as_dry_run(creds, monkeypatch, capsys):
 
 def test_send_lines_mode_has_no_post_per_invoice(creds, monkeypatch, capsys):
     fake = install(monkeypatch, {"SendExpensesClassification": "response_success.xml"})
-    run(capsys, "classify", "--file", str(FIX / "proposal_lines.json"), "--send")
+    send(capsys, "--file", str(FIX / "proposal_lines.json"))
     assert "postPerInvoice" not in fake.calls[0]["url"]
 
 
 def test_send_reports_validation_errors(creds, monkeypatch, capsys):
     install(monkeypatch, {"SendExpensesClassification": "response_error.xml"})
-    code, out, _ = run(capsys, "classify", "--file", str(FIX / "proposal_per_invoice.json"), "--send")
+    code, out, _ = send(capsys, "--file", PER_INVOICE)
     assert code == 7
     res = json.loads(out)["results"][0]
     assert res["statusCode"] == "ValidationError" and res["errors"][0]["code"] == "215"
@@ -358,8 +436,7 @@ def test_send_reports_validation_errors(creds, monkeypatch, capsys):
 
 def test_production_send_with_flag_uses_prod_url(creds, monkeypatch, capsys):
     fake = install(monkeypatch, {"SendExpensesClassification": "response_success.xml"})
-    code, _, _ = run(capsys, "classify", "--file", str(FIX / "proposal_per_invoice.json"),
-                     "--env", "prod", "--send", "--yes-production")
+    code, _, _ = send(capsys, "--file", PER_INVOICE, env_args=("--env", "prod"), send_only=("--yes-production",))
     assert code == 0
     assert fake.calls[0]["url"].startswith("https://mydatapi.aade.gr/myDATA/SendExpensesClassification")
 

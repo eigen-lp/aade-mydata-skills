@@ -11,8 +11,8 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py reconcile --from 2026-10-01 --to 2
 python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py reconcile --side income --from ... --to ... --file sales.csv
 
 # offline, against saved JSON (full format, not --format summary); --mydata-json is repeatable
-python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py docs --from ... --to ... > docs.json
-python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py transmitted --from ... --to ... > tx.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py docs --from ... --to ... --out docs.json
+python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py transmitted --from ... --to ... --out tx.json
 python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py reconcile --file purchases.csv --mydata-json docs.json --mydata-json tx.json
 ```
 

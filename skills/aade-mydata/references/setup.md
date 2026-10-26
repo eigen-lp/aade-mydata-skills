@@ -20,7 +20,18 @@ export MYDATA_SUBSCRIPTION_KEY="your-subscription-key"
 export MYDATA_ENV="test"   # optional; "test" is the default
 ```
 
-Then open a new terminal (or `source ~/.zshrc`) and start Claude Code from it. A git-ignored `.env` file that you `source` works too. Keep production keys out of shared machines and repos; if a key leaks, delete it in the portal and create a new one.
+Then open a new terminal (or `source ~/.zshrc`) and start Claude Code from it.
+
+Or keep them in a git-ignored file per environment and pass it to every command with `--env-file` (this is what the skill does, so commands stay single, pre-approved calls):
+
+```bash
+# .env.prod  (chmod 600, never committed)
+MYDATA_ENV=prod
+MYDATA_USER_ID=your-username
+MYDATA_SUBSCRIPTION_KEY=your-subscription-key
+```
+
+`--env-file` only reads `MYDATA_USER_ID`, `MYDATA_SUBSCRIPTION_KEY` and `MYDATA_ENV`; other lines are ignored. Keep production keys out of shared machines and repos; if a key leaks, delete it in the portal and create a new one.
 
 ## 3. Check
 
@@ -37,4 +48,4 @@ This prints the environment, the base URL and whether each variable is set (neve
 | `test` (default) | `https://mydataapidev.aade.gr/` | AADE "test URLs" list (aade.gr/sites/default/files/2022-12/test_urls_0.pdf) |
 | `prod` | `https://mydatapi.aade.gr/myDATA/` | ERP technical description v2.0.2, section 4.2 |
 
-`--env` overrides `MYDATA_ENV`. Writing to production also needs `--send --yes-production`.
+`--env` overrides `MYDATA_ENV` (including one from `--env-file`). Writing to production also needs `--yes-production` on `send`.
