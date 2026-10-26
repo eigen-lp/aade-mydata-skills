@@ -409,6 +409,14 @@ def test_reconcile_needs_usable_columns(tmp_path, capsys, no_network):
     assert code == 2 and "amount column" in err
 
 
+@pytest.mark.parametrize("raw, safe", [
+    ('=HYPERLINK("http://x","y")', '\'=HYPERLINK("http://x","y")'), ("+1+1", "'+1+1"), ("@SUM(A1)", "'@SUM(A1)"),
+    ("-3.00", "-3.00"), ("ACME A.E.", "ACME A.E."), ({"a": 1}, ""),
+])
+def test_csv_cells_are_formula_safe(raw, safe):
+    assert mydata.csv_safe(raw) == safe
+
+
 @pytest.mark.parametrize("text, value", [
     ("1234.56", "1234.56"), ("1.234,56", "1234.56"), ("1,234.56", "1234.56"),
     ("12,5", "12.5"), ("€ 10", "10"), ("-3,00", "-3.00"),

@@ -343,11 +343,21 @@ def request_book(env, endpoint, args):
             "params": {k: v for k, v in params.items() if v}, "rows": rows}
 
 
+def csv_safe(value):
+    """Neutralise spreadsheet formulas in third-party text (e.g. issuer names)."""
+    if isinstance(value, (dict, list)):
+        return ""
+    text = "" if value is None else str(value)
+    if text[:1] in ("=", "+", "-", "@", "\t", "\r") and not re.fullmatch(r"-?\d+(\.\d+)?", text):
+        return "'" + text
+    return text
+
+
 def write_csv(rows, fields, out):
     writer = csv.DictWriter(out, fieldnames=fields, extrasaction="ignore", lineterminator="\n")
     writer.writeheader()
     for r in rows:
-        writer.writerow({k: r.get(k, "") if not isinstance(r.get(k), (dict, list)) else "" for k in fields})
+        writer.writerow({k: csv_safe(r.get(k, "")) for k in fields})
 
 
 def emit_json(obj, out=None):
