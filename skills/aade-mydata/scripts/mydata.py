@@ -63,13 +63,15 @@ BOOK_FIELDS = [
 SUMMARY_FIELDS = [
     "mark", "issueDate", "invoiceType", "series", "aa", "issuerVat", "issuerName",
     "counterpartVat", "counterpartName", "netValue", "vatAmount", "grossValue",
-    "cancelledByMark", "classified",
+    "cancelledByMark", "selfPricing", "classified",
 ]
 
 # Β1/Β2 "recipient-entered" documents (spec §5, footnote 1): the business transmits them itself,
 # so they appear in RequestTransmittedDocs even though they are its expenses.
 SELF_ENTERED_TYPES = {"13.1", "13.2", "13.3", "13.4", "13.30", "13.31", "14.1", "14.2", "14.3",
                       "14.4", "14.5", "14.30", "14.31", "15.1", "16.1"}
+# Delivery notes (table 8.1): movement documents with no value; AADE's books ignore them.
+NON_FINANCIAL_TYPES = {"9.1", "9.2", "9.3", "10.1", "10.2"}
 
 MAX_PAGES = 500
 RATE_LIMIT_RETRIES = 3
@@ -347,6 +349,7 @@ def summarize_invoice(inv):
         "vatAmount": summ.get("totalVatAmount", ""),
         "grossValue": summ.get("totalGrossValue", ""),
         "cancelledByMark": inv.get("cancelledByMark", ""),
+        "selfPricing": "yes" if is_self_billed(inv) else "",
         "classified": "yes" if classified else "no",
     }
 
@@ -407,18 +410,58 @@ def is_self_entered(inv):
     return (inv.get("invoiceHeader") or {}).get("invoiceType", "") in SELF_ENTERED_TYPES
 
 
-def expense_invoices(env, args):
-    """Invoices that are the business's expenses: received (RequestDocs) plus its own
-    recipient-entered documents (13.x/14.x/15.1/16.1 from RequestTransmittedDocs)."""
+def is_self_billed(inv):
+    return str((inv.get("invoiceHeader") or {}).get("selfPricing", "")).lower() == "true"
+
+
+def book_side(inv, source):
+    """Which of the business's books a document belongs to: "expenses", "income" or None.
+
+    Matches AADE's own RequestMyExpenses/RequestMyIncome grouping (checked on production data):
+    - delivery notes (9.x, 10.x) are in neither book;
+    - RequestDocs: self-billed (selfPricing=true) documents are the recipient's income,
+      everything else its expenses;
+    - RequestTransmittedDocs: recipient-entered types (13.x/14.x/15.1/16.1) are expenses,
+      everything else income.
+    """
+    if (inv.get("invoiceHeader") or {}).get("invoiceType", "") in NON_FINANCIAL_TYPES:
+        return None
+    if source == "RequestDocs":
+        return "income" if is_self_billed(inv) else "expenses"
+    if source == "RequestTransmittedDocs":
+        return "expenses" if is_self_entered(inv) else "income"
+    return None
+
+
+def book_invoices(env, args, side):
+    """All documents in one book (side), fetched from both RequestDocs and RequestTransmittedDocs."""
     received = request_docs(env, "RequestDocs", args)
     own = request_docs(env, "RequestTransmittedDocs", args)
-    seen = {i.get("mark") for i in received["invoices"]}
-    extra = [i for i in own["invoices"] if is_self_entered(i) and i.get("mark") not in seen]
-    received["invoices"].extend(extra)
+    excluded = {"deliveryNotes": 0, "otherBook": 0}
+    keep, seen = [], set()
+    for source, docs in (("RequestDocs", received), ("RequestTransmittedDocs", own)):
+        for inv in docs["invoices"]:
+            where = book_side(inv, source)
+            if where == side and inv.get("mark") not in seen:
+                seen.add(inv.get("mark"))
+                keep.append(inv)
+            elif where is None:
+                excluded["deliveryNotes"] += 1
+            elif where != side and source == "RequestDocs":
+                excluded["otherBook"] += 1
+    received["invoices"] = keep
     received["expensesClassifications"].extend(own["expensesClassifications"])
+    received["incomeClassifications"].extend(own["incomeClassifications"])
     received["pages"] += own["pages"]
-    received["selfEnteredFromTransmitted"] = len(extra)
+    received["method"] = f"RequestDocs+RequestTransmittedDocs ({side})"
+    received["excluded"] = excluded
     return received
+
+
+def expense_invoices(env, args):
+    """The business's expenses: received documents (minus self-billed income and delivery
+    notes) plus its own recipient-entered 13.x/14.x/15.1/16.1 documents."""
+    return book_invoices(env, args, "expenses")
 
 
 def cmd_docs(args, endpoint):
@@ -797,9 +840,11 @@ def read_erp_csv(path):
 
 
 def reconcile(erp_rows, invoices, side, tolerance=Decimal("0.01")):
-    vat_role = "issuer" if side == "expenses" else "counterpart"
     docs = []
     for inv in invoices:
+        # The other party: the issuer on expenses (and on self-billed income, where the
+        # customer issued the document), otherwise the counterpart.
+        vat_role = "issuer" if side == "expenses" or is_self_billed(inv) else "counterpart"
         s = summarize_invoice(inv)
         gross = parse_amount(s["grossValue"]) if s["grossValue"] else None
         docs.append({"mark": s["mark"], "afm": normalise_afm(party_vat(inv, vat_role)), "date": s["issueDate"][:10],
@@ -882,9 +927,11 @@ def cmd_reconcile(args):
             if items and "mark" in items[0] and "invoiceHeader" not in items[0]:
                 raise MyDataError("--mydata-json needs the full JSON from `docs`/`transmitted` "
                                   "(not --format summary/csv).", 2)
-            if saved.get("method") == "RequestTransmittedDocs":
-                # Own transmissions: self-entered types are expenses, the rest income.
-                items = [i for i in items if is_self_entered(i) == (args.side == "expenses")]
+            method = saved.get("method", "")
+            if method in ("RequestDocs", "RequestTransmittedDocs"):
+                items = [i for i in items if book_side(i, method) == args.side]
+            elif method.startswith("RequestDocs+"):  # `docs --include-self-entered`: already the expenses book
+                items = items if args.side == "expenses" else []
             for i in items:
                 if i.get("mark") not in seen:
                     seen.add(i.get("mark"))
@@ -894,11 +941,7 @@ def cmd_reconcile(args):
             raise MyDataError("reconcile needs --from and --to (or --mydata-json).", 2)
         env = get_env(args.env)
         args.mark, args.max_mark, args.inv_type, args.counterpart = 0, None, None, None
-        if args.side == "expenses":
-            invoices = expense_invoices(env, args)["invoices"]
-        else:
-            invoices = [i for i in request_docs(env, "RequestTransmittedDocs", args)["invoices"]
-                        if not is_self_entered(i)]
+        invoices = book_invoices(env, args, args.side)["invoices"]
     if args.date_from and args.date_to:
         lo, hi = parse_date(args.date_from).isoformat(), parse_date(args.date_to).isoformat()
         erp_rows = [r for r in erp_rows if not r["date"] or lo <= r["date"] <= hi]
@@ -935,8 +978,8 @@ def build_parser():
         sp.add_argument("--format", choices=("json", "summary", "csv"), default="json")
         if name == "docs":
             sp.add_argument("--include-self-entered", action="store_true",
-                            help="also include your own 13.x/14.x/15.1/16.1 expense documents "
-                                 "(fetched from RequestTransmittedDocs)")
+                            help="expense book view: add your own 13.x/14.x/15.1/16.1 documents "
+                                 "(from RequestTransmittedDocs), drop self-billed income and delivery notes")
 
     for name, help_text in (("income", "RequestMyIncome: income book totals"),
                             ("expenses", "RequestMyExpenses: expense book totals")):
@@ -960,7 +1003,7 @@ def build_parser():
     sp.add_argument("--from", dest="date_from")
     sp.add_argument("--to", dest="date_to")
     sp.add_argument("--side", choices=("expenses", "income"), default="expenses",
-                    help="expenses: received + own 13.x/14.x documents; income: issued documents")
+                    help="expenses: received + own 13.x/14.x documents; income: issued + self-billed documents")
     sp.add_argument("--mydata-json", action="append",
                     help="saved `docs`/`transmitted` JSON instead of calling the API (repeatable)")
     sp.add_argument("--tolerance", default="0.01", help="amount tolerance in euro (default 0.01)")

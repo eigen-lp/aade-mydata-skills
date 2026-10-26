@@ -455,7 +455,7 @@ def test_reconcile_income_side_uses_transmitted(creds, monkeypatch, capsys):
     fake = install(monkeypatch, DOCS_ROUTES)
     run(capsys, "reconcile", "--side", "income", "--file", str(FIX / "erp.csv"),
         "--from", "2026-10-01", "--to", "2026-10-31")
-    assert fake.calls[0]["endpoint"] == "RequestTransmittedDocs"
+    assert {c["endpoint"] for c in fake.calls} == {"RequestDocs", "RequestTransmittedDocs"}
 
 
 EMPTY_DOC = b'<RequestedDoc xmlns="http://www.aade.gr/myDATA/invoice/v1.0"/>'
@@ -469,7 +469,6 @@ def test_docs_include_self_entered(creds, monkeypatch, capsys):
     assert code == 0
     data = json.loads(out)
     assert [i["mark"] for i in data["invoices"]] == ["400000000000104"]
-    assert data["selfEnteredFromTransmitted"] == 1
     assert [c["endpoint"] for c in fake.calls] == ["RequestDocs", "RequestTransmittedDocs"]
 
 
@@ -514,6 +513,64 @@ def test_reconcile_hints_near_misses(tmp_path, creds, monkeypatch, capsys):
     code, out, _ = run(capsys, "reconcile", "--file", str(erp), "--mydata-json", str(docs))
     miss = json.loads(out)["missingInMyData"][0]
     assert code == 0 and "possible match: myDATA MARK 400000000000101" in miss["note"]
+
+
+MIXED_ROUTES = {"RequestDocs": "requested_docs_mixed.xml",
+                "RequestTransmittedDocs": lambda p, b: (200, EMPTY_DOC)}
+
+
+@pytest.mark.parametrize("inv_type, self_pricing, source, side", [
+    ("1.1", False, "RequestDocs", "expenses"),
+    ("2.1", True, "RequestDocs", "income"),
+    ("9.3", False, "RequestDocs", None),
+    ("10.1", False, "RequestTransmittedDocs", None),
+    ("14.4", False, "RequestTransmittedDocs", "expenses"),
+    ("2.1", False, "RequestTransmittedDocs", "income"),
+])
+def test_book_side(inv_type, self_pricing, source, side):
+    inv = {"invoiceHeader": {"invoiceType": inv_type, **({"selfPricing": "true"} if self_pricing else {})}}
+    assert mydata.book_side(inv, source) == side
+
+
+def test_expense_view_drops_self_billed_and_delivery_notes(creds, monkeypatch, capsys):
+    install(monkeypatch, MIXED_ROUTES)
+    code, out, _ = run(capsys, "docs", "--include-self-entered", "--format", "summary")
+    data = json.loads(out)
+    assert code == 0 and [i["mark"] for i in data["invoices"]] == ["400000000000201"]
+    assert data["excluded"] == {"deliveryNotes": 1, "otherBook": 1}
+
+
+def test_plain_docs_keeps_everything_and_flags_self_pricing(creds, monkeypatch, capsys):
+    install(monkeypatch, MIXED_ROUTES)
+    _, out, _ = run(capsys, "docs", "--format", "csv")
+    rows = {line.split(",")[0]: line for line in out.strip().splitlines()[1:]}
+    assert len(rows) == 3 and rows["400000000000202"].endswith(",yes,no")
+
+
+def test_reconcile_sides_follow_aade_books(creds, monkeypatch, capsys, tmp_path):
+    install(monkeypatch, MIXED_ROUTES)
+    erp = tmp_path / "erp.csv"
+    erp.write_text("afm,date,amount\n777777777,2026-10-07,10.10\n")
+    code, out, _ = run(capsys, "reconcile", "--side", "income", "--file", str(erp),
+                       "--from", "2026-10-01", "--to", "2026-10-31")
+    r = json.loads(out)
+    # The self-billed invoice is income, matched on the customer's AFM (its issuer).
+    assert code == 0 and r["summary"]["myDataInvoices"] == 1 and r["matched"][0]["mark"] == "400000000000202"
+    erp.write_text("afm,date,amount\n")
+    _, out, _ = run(capsys, "reconcile", "--file", str(erp), "--from", "2026-10-01", "--to", "2026-10-31")
+    assert [d["mark"] for d in json.loads(out)["missingInErp"]] == ["400000000000201"]
+
+
+def test_reconcile_saved_requestdocs_split_by_side(creds, monkeypatch, capsys, tmp_path):
+    install(monkeypatch, MIXED_ROUTES)
+    _, out, _ = run(capsys, "docs")
+    saved = tmp_path / "docs.json"
+    saved.write_text(out)
+    erp = tmp_path / "erp.csv"
+    erp.write_text("mark,amount\n")
+    for side, marks in (("expenses", ["400000000000201"]), ("income", ["400000000000202"])):
+        _, out, _ = run(capsys, "reconcile", "--side", side, "--file", str(erp), "--mydata-json", str(saved))
+        assert [d["mark"] for d in json.loads(out)["missingInErp"]] == marks
 
 
 def test_reconcile_rejects_summary_json(tmp_path, creds, monkeypatch, capsys):

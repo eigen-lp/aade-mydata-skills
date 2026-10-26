@@ -16,11 +16,21 @@ All read commands are safe: GET only, no changes in myDATA. Output is JSON on st
 
 `docs` is RequestDocs: documents **other parties** submitted that concern you (your purchases, plus their classifications and cancellations). `transmitted` is RequestTransmittedDocs: what **you** submitted.
 
-Recipient-entered documents (types 13.x, 14.x, 15.1, 16.1, e.g. a foreign SaaS bill entered as 14.4) are expenses that **you** transmit, so AADE returns them from RequestTransmittedDocs, not RequestDocs. `docs --include-self-entered` makes both calls and adds those types, so you get every expense document in one list. `reconcile --side expenses` always does this.
+Which book a document belongs to doesn't follow the endpoint one-to-one. `docs --include-self-entered` and `reconcile` apply the same rule as AADE's own books (checked against `expenses`/`income` totals on production data):
+
+| Source | Document | Book |
+|---|---|---|
+| either | delivery notes 9.1, 9.2, 9.3, 10.1, 10.2 | none (no value; skipped) |
+| `docs` (RequestDocs) | `selfPricing` = true (αυτοτιμολόγηση: the customer issued it for you) | **income** |
+| `docs` | everything else | expenses |
+| `transmitted` (RequestTransmittedDocs) | recipient-entered 13.x, 14.x, 15.1, 16.1 (e.g. a foreign SaaS bill as 14.4) | expenses |
+| `transmitted` | everything else | income |
+
+So `docs --include-self-entered` is the **expense book view**: received documents plus your own 13.x/14.x entries, minus self-billed income and delivery notes. Its `excluded` field counts what was dropped. Plain `docs` returns RequestDocs unfiltered; the `selfPricing` column marks self-billed income there. Never propose expense classifications for self-billed or delivery-note documents.
 
 ## `--format summary` / `csv` columns
 
-`mark, issueDate, invoiceType, series, aa, issuerVat, issuerName, counterpartVat, counterpartName, netValue, vatAmount, grossValue, cancelledByMark, classified`
+`mark, issueDate, invoiceType, series, aa, issuerVat, issuerName, counterpartVat, counterpartName, netValue, vatAmount, grossValue, cancelledByMark, selfPricing, classified`
 
 `classified` is `yes` when the invoice carries expense classifications (line or summary level) or a separately sent classification for its MARK is in `expensesClassifications`. A new submission replaces the old one, so check before re-classifying.
 
@@ -46,5 +56,7 @@ The full list, with which expense classifications each type accepts, is in `expe
 ## Reading amounts
 
 - `netValue` net, `vatAmount` VAT, `grossValue` total; withheld tax, fees, stamp duty, other taxes and deductions are separate fields.
-- Credit notes (5.x, 11.4, 13.31, 14.31) are returned with positive amounts; treat them as negative in totals.
+- Credit notes (5.x, 11.4, 13.31, 14.31): `docs`/`transmitted` return them with **positive** amounts (the XSD allows no negatives), so subtract them yourself. The `income`/`expenses` book rows already carry them as **negative** values. Don't negate twice when comparing the two.
+- The `expenses` book (RequestMyExpenses) leaves out recipient-entered retail documents 13.x, which `docs --include-self-entered` does list (seen on production). Expect the invoice-level total to exceed the book by those amounts.
+- When comparing invoice-level reads with the books, exclude cancelled documents (`cancelledByMark`) and apply the book rule above.
 - Amounts are strings in JSON to keep exact decimals.

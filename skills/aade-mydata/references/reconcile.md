@@ -3,11 +3,11 @@
 `reconcile` compares the invoices AADE holds with a CSV exported from the user's ERP, accounting package or bank, and lists what is missing or different on either side. Read-only.
 
 ```bash
-# expenses side (default): invoices suppliers sent you (RequestDocs) plus your own
-# 13.x/14.x/15.1/16.1 entries (RequestTransmittedDocs)
+# expenses side (default): the expense book (see books.md): received documents plus your own
+# 13.x/14.x/15.1/16.1 entries, without self-billed income and delivery notes
 python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py reconcile --from 2026-10-01 --to 2026-10-31 --file purchases.csv
 
-# income side: invoices you issued (RequestTransmittedDocs minus the self-entered expense types)
+# income side: the income book: documents you issued plus self-billed ones a customer issued for you
 python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py reconcile --side income --from ... --to ... --file sales.csv
 
 # offline, against saved JSON (full format, not --format summary); --mydata-json is repeatable
@@ -38,7 +38,7 @@ Amounts are compared as absolute values, so credit notes exported as negatives s
 2. Rows without a MARK (or whose MARK isn't in myDATA) are matched on **AFM + issue date + gross amount**, only if exactly one unmatched myDATA invoice fits. A row whose MARK differs from the one found this way is `mismatched`.
 3. Whatever is left: ERP rows go to `missingInMyData`, myDATA invoices to `missingInErp`. Cancelled myDATA invoices (with `cancelledByMark`) that no ERP row claims go to `cancelledInMyData` instead.
 
-The AFM compared is the **issuer's** on the expenses side and the **counterpart's** on the income side. AFMs are compared after dropping spaces, dots, dashes and a Greek `EL`/`GR` prefix; other country prefixes are kept (`US987654321`), since foreign suppliers on 14.x documents carry them. With `--from/--to`, both sides are limited to that issue-date range.
+Both live sides call RequestDocs and RequestTransmittedDocs and keep the documents of that book (rule in [books.md](books.md)); saved `--mydata-json` files are filtered the same way using their `method`. The AFM compared is the other party's: the **issuer's** on the expenses side and on self-billed income (the customer issued it), otherwise the **counterpart's**. AFMs are compared after dropping spaces, dots, dashes and a Greek `EL`/`GR` prefix; other country prefixes are kept (`US987654321`), since foreign suppliers on 14.x documents carry them. With `--from/--to`, both sides are limited to that issue-date range.
 
 When an ERP row has no match but exactly one unmatched myDATA invoice has the same AFM and date, its `note` says `possible match: myDATA MARK ... but amount ...`; it usually means a typo or a fee/rounding difference.
 

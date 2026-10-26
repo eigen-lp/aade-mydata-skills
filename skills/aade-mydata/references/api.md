@@ -48,6 +48,11 @@ Not in the spec, but seen on `mydataapidev.aade.gr` and handled by the CLI:
 - Read-back of a classification includes `transactionMode` `0` and `classificationPostMode` `1` for per-invoice submissions.
 - Error 105 `User VAT number X is not authorized to execute this method for VAT number Y` means the AFM in the document isn't the API user's (or one it's authorised for); the message reveals which AFM the user is registered under.
 
+## Observed on production (read-only run, 26 Oct 2026)
+
+- Comparing invoice-level reads with RequestMyExpenses/RequestMyIncome per invoice type: 14.4, 14.30 and 2.2 matched exactly. Self-billed documents (`selfPricing` = true) returned by RequestDocs are counted in the recipient's **income** book; delivery notes 9.3 are in neither book; recipient-entered 13.1/13.2 documents are **not** in RequestMyExpenses; book rows show credit notes (5.2) as negative values. `mydata.py` follows the same grouping.
+- Wrapping and rate limiting behaved as on the test environment.
+
 ## v2.0.2 vs v2.0.1 / v2.0.0
 
 The v2.0.x changes are about digital delivery notes (new methods `RegisterTransfer`, `ConfirmDeliveryOutcome`, `RejectDeliveryNote`, `GetDeliveryNoteStatus`, `GenerateGroupQRCode`, `RequestGroupQRDetails`, `ConfirmDeliveryReturn`; new header fields such as `receivingNotePurpose`, `nonObligatedRecipient`, `withoutDigitalTransportTracking`; document types 1.4, 3.1, 3.2, 11.5 can now act as delivery notes). Invoices you read may carry the new delivery fields (`invoiceDeliveryStatus`, `deliveryLifecycle`, `packingsDeclarations`); the CLI passes them through untouched. The read endpoints and `SendExpensesClassification` used here are unchanged; `ExpensesClassificationType` still has `classificationType`, `classificationCategory`, `amount`, `vatAmount`, `vatCategory` (1-10), `vatExemptionCategory` (1-31) and `id`.

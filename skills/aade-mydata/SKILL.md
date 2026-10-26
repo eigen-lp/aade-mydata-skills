@@ -37,7 +37,7 @@ Accountants acting for a client add `--entity <client AFM>` to any command.
 
 ## Classification loop (short version)
 
-1. `docs --include-self-entered --format summary` for the period; pick invoices with `classified: no` that aren't cancelled.
+1. `docs --include-self-entered --format summary` for the period (the expense book view: no self-billed income, no delivery notes); pick invoices with `classified: no` that aren't cancelled.
 2. For each, get the full invoice (`docs --format json`, filter by MARK) and draft a proposal JSON following [classify.md](references/classify.md). Choose codes from `references/expense-combinations.json` for that invoice type; explain each choice in one line.
 3. `classify --file proposal.json` (dry run). Fix any `error:` lines.
 4. Show the table, say which environment, ask for an explicit yes, then `--send`. Report each `statusCode` and `classificationMark`.
