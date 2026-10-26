@@ -10,6 +10,8 @@ venv/
 xsd/
 *.xsd
 *.xlsx
+# build output
+dist/
 # working files with real data
 data/
 *.mydata.json

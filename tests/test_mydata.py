@@ -754,6 +754,25 @@ def test_parse_amount(text, value):
     assert mydata.parse_amount(text) == Decimal(value)
 
 
+# --------------------------------------------------------------------------- packaging
+
+
+def test_plugin_zip_contents(tmp_path):
+    import zipfile
+    spec_pkg = importlib.util.spec_from_file_location("package_plugin", ROOT / "tools" / "package_plugin.py")
+    pkg = importlib.util.module_from_spec(spec_pkg)
+    spec_pkg.loader.exec_module(pkg)
+    first = pkg.build(tmp_path / "a.zip")
+    second = pkg.build(tmp_path / "b.zip")
+    assert first.read_bytes() == second.read_bytes()  # reproducible
+    names = zipfile.ZipFile(first).namelist()
+    assert names.count(".claude-plugin/plugin.json") == 1
+    assert "skills/aade-mydata/SKILL.md" in names and "skills/aade-mydata/scripts/mydata.py" in names
+    assert "skills/aade-mydata/references/expense-combinations.json" in names
+    assert not any(n.startswith(("tests/", "tools/", ".git")) or ".env" in n or ".DS_Store" in n for n in names)
+    assert ".claude-plugin/marketplace.json" not in names
+
+
 # --------------------------------------------------------------------------- optional XSD check
 
 

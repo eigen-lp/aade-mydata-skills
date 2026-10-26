@@ -29,7 +29,7 @@ from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 SPEC_VERSION = "2.0.2"
 
 BASE_URLS = {
@@ -167,7 +167,9 @@ def _transport(method, url, headers, body=None, timeout=60):
     except urllib.error.HTTPError as e:
         return e.code, e.read()
     except urllib.error.URLError as e:
-        raise MyDataError(f"Network error reaching {urllib.parse.urlsplit(url).netloc}: {e.reason}")
+        host = urllib.parse.urlsplit(url).netloc
+        raise MyDataError(f"Network error reaching {host}: {e.reason}. In Cowork or another sandbox, "
+                          f"allow outbound access to {host} (see references/setup.md).")
 
 
 def call(env, method, endpoint, params=None, body=None):

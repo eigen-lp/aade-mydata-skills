@@ -2,7 +2,7 @@
   "name": "aade-mydata",
   "displayName": "AADE myDATA",
   "description": "Read AADE myDATA e-books, propose and send expense classifications (E3/VAT), and reconcile myDATA with ERP or bank exports. Test environment by default.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": {
     "name": "EIGEN LAB",
     "url": "https://eigen.gr"

@@ -43,6 +43,8 @@ export MYDATA_SUBSCRIPTION_KEY="your-test-subscription-key"
 
 Requirements: Python 3.9 or newer (standard library only, nothing to `pip install`).
 
+**Cowork:** the same plugin works there. Add it under **Customize > Plugins** (marketplace `eigen-lp/aade-mydata-skills`, or upload the release zip), allow network access to `mydatapi.aade.gr` and `mydataapidev.aade.gr`, and keep your credentials in a `.env` file in a folder you share with the task. Details in [setup.md](skills/aade-mydata/references/setup.md#using-it-in-cowork-or-chat).
+
 ## Production
 
 Production uses separate credentials, created after logging in with TAXISnet at <https://www1.aade.gr/saadeapps2/bookkeeper-web> («Φόρμα εγγραφής στο myDATA REST API»). Set `MYDATA_ENV=prod` or pass `--env prod`. Reading works the same; sending classifications to production additionally needs `--yes-production` on `send`, which Claude adds only when you explicitly confirm that the data is for your real books. You can keep each environment's credentials in a git-ignored file and pass it with `--env-file .env.prod`. Accountants acting for a client add `--entity <client AFM>`.
@@ -82,6 +84,8 @@ Based on the official myDATA REST API technical description for ERP users **v2.0
 python3 -m pip install pytest
 python3 -m pytest -q
 ```
+
+Build the upload zip for Cowork / claude.ai with `python3 tools/package_plugin.py` (writes `dist/aade-mydata-<version>.zip`).
 
 Tests are offline. `tools/seed_test_invoices.py` (dev only, hard-wired to the test environment) sends a couple of synthetic 13.1/14.4 expense documents for your test AFM (`MYDATA_TEST_AFM`) so you can try `classify` and `reconcile` end to end. To also validate the generated XML against AADE's schema, download the v2.0.2 XSD zip from the page above, unzip it, and run with `AADE_XSD_DIR=/path/to/xsds` (needs `xmllint`).
 

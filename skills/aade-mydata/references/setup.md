@@ -41,6 +41,17 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py check
 
 This prints the environment, the base URL and whether each variable is set (never the values), then makes one read-only call (`RequestMyIncome` for today). Exit codes: `3` variables missing, `4` credentials rejected (HTTP 401/403), `5` other HTTP error.
 
+## Using it in Cowork (or chat)
+
+The plugin works in Claude Code, Cowork and claude.ai chat: a plugin you add under **Customize > Plugins** is saved to your account and loads in all three. Claude Code is where it's tested most; check these when you use Cowork:
+
+1. **Install.** In the Claude desktop app open **Customize > Plugins**, then either **Add > Add marketplace** with `eigen-lp/aade-mydata-skills`, or **Add > Upload plugin** with the release zip (`tools/package_plugin.py` builds it).
+2. **Network.** Cowork runs commands in a sandbox that reaches only allowed domains. Allow outbound access to `mydatapi.aade.gr` (production) and `mydataapidev.aade.gr` (test): in the desktop app's settings turn on code execution and network egress, then add both domains to the allowed list (or allow all domains). On Team/Enterprise plans an admin manages this list. Settings apply to tasks started after the change.
+3. **Credentials.** Your shell's environment variables don't reach Cowork. Put a `.env.prod` / `.env.dev` file (format above) in a folder you share with the Cowork task and tell Claude its path; the skill passes it with `--env-file`. Each task starts on a clean machine, so nothing is stored between tasks. Don't paste keys into the chat.
+4. **Confirmation.** Cowork has its own approval model, so you may not get the same per-command prompt as in Claude Code. The safeguards that don't depend on the app still apply: Claude must show you the dry-run table and get your yes, `send` refuses without the matching confirmation code, and production needs `--yes-production`.
+
+Claude.ai chat additionally needs code execution with network access to the same domains, and has no folder to share, so Cowork or Claude Code are the better fit.
+
 ## Environments
 
 | `--env` | Base URL | Source |

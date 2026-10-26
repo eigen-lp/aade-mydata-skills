@@ -13,7 +13,7 @@ allowed-tools:
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py classify *)
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py reconcile *)
 metadata:
-  version: 0.2.0
+  version: 0.2.1
   spec: myDATA REST API v2.0.2 (ERP channel)
   homepage: https://github.com/eigen-lp/aade-mydata-skills
 ---
@@ -21,6 +21,10 @@ metadata:
 # AADE myDATA
 
 Everything goes through `python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py <command>` (stdlib Python, JSON/CSV out). Default environment is **test**. Run each command on its own, exactly in that form: no `cd`, `&&`, `;`, pipes, `source` or `>` redirects. Load credentials with `--env-file <path>` and save output with `--out <file>` instead.
+
+**Script path.** If `${CLAUDE_SKILL_DIR}` shows up literally instead of as a real path (some apps don't substitute it), use the absolute path of `scripts/mydata.py` in the folder that contains this SKILL.md. Find it once and reuse it.
+
+**Cowork and other sandboxes.** The script needs `python3` and HTTPS access to `mydatapi.aade.gr` (production) or `mydataapidev.aade.gr` (test). If a call fails with a network error, tell the user to allow those domains (see the Cowork section of [setup.md](references/setup.md)). Environment variables from the user's shell aren't available there: ask the user for the path of their `.env` file in a folder they've shared, and pass it with `--env-file`.
 
 ## Reads vs writes
 

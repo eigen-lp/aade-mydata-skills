@@ -43,6 +43,8 @@ export MYDATA_SUBSCRIPTION_KEY="το-δοκιμαστικό-subscription-key"
 
 Απαιτείται Python 3.9 ή νεότερη (μόνο η standard library, δεν χρειάζεται `pip install`).
 
+**Cowork:** το ίδιο plugin λειτουργεί και εκεί. Προσθέστε το από **Customize > Plugins** (marketplace `eigen-lp/aade-mydata-skills` ή ανέβασμα του zip της έκδοσης), επιτρέψτε πρόσβαση δικτύου στα `mydatapi.aade.gr` και `mydataapidev.aade.gr` και κρατήστε τα διαπιστευτήρια σε αρχείο `.env` σε φάκελο που μοιράζεστε με την εργασία. Λεπτομέρειες στο [setup.md](skills/aade-mydata/references/setup.md#using-it-in-cowork-or-chat).
+
 ## Παραγωγικό περιβάλλον
 
 Το παραγωγικό περιβάλλον έχει ξεχωριστά διαπιστευτήρια, που δημιουργούνται αφού συνδεθείτε με κωδικούς TAXISnet στο <https://www1.aade.gr/saadeapps2/bookkeeper-web> («Φόρμα εγγραφής στο myDATA REST API»). Ορίστε `MYDATA_ENV=prod` ή δώστε `--env prod`. Η ανάγνωση λειτουργεί το ίδιο· η αποστολή χαρακτηρισμών στην παραγωγή χρειάζεται επιπλέον `--yes-production` στην εντολή `send`, που το Claude προσθέτει μόνο όταν επιβεβαιώσετε ρητά ότι πρόκειται για τα πραγματικά σας βιβλία. Μπορείτε να κρατάτε τα διαπιστευτήρια κάθε περιβάλλοντος σε αρχείο εκτός git και να το δίνετε με `--env-file .env.prod`. Οι λογιστές που ενεργούν για πελάτη προσθέτουν `--entity <ΑΦΜ πελάτη>`.
