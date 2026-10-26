@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,6 +38,7 @@ BASE_URLS = {
 }
 
 ECLS_NS = "https://www.aade.gr/myDATA/expensesClassificaton/v1.0"  # sic, AADE's spelling
+MS_SERIALIZATION_NS = "http://schemas.microsoft.com/2003/10/Serialization/"
 COMBINATIONS_FILE = Path(__file__).resolve().parent.parent / "references" / "expense-combinations.json"
 
 EXPENSE_CATEGORIES = {f"category2_{n}" for n in (*range(1, 15), 95)}
@@ -64,7 +66,15 @@ SUMMARY_FIELDS = [
     "cancelledByMark", "classified",
 ]
 
+# Β1/Β2 "recipient-entered" documents (spec §5, footnote 1): the business transmits them itself,
+# so they appear in RequestTransmittedDocs even though they are its expenses.
+SELF_ENTERED_TYPES = {"13.1", "13.2", "13.3", "13.4", "13.30", "13.31", "14.1", "14.2", "14.3",
+                      "14.4", "14.5", "14.30", "14.31", "15.1", "16.1"}
+
 MAX_PAGES = 500
+RATE_LIMIT_RETRIES = 3
+RATE_LIMIT_MAX_WAIT = 120  # seconds
+_sleep = time.sleep  # replaced in tests
 
 
 class MyDataError(Exception):
@@ -136,7 +146,18 @@ def call(env, method, endpoint, params=None, body=None):
     }
     if body is not None:
         headers["Content-Type"] = "application/xml"
-    status, data = _transport(method, url, headers, body)
+    for attempt in range(RATE_LIMIT_RETRIES + 1):
+        status, data = _transport(method, url, headers, body)
+        if status != 429 or attempt == RATE_LIMIT_RETRIES:
+            break
+        # AADE answers 429 with e.g. "Rate limit is exceeded. Try again in 65 seconds."
+        m = re.search(rb"(\d+)\s*seconds", data or b"")
+        wait = min(int(m.group(1)) if m else 30, RATE_LIMIT_MAX_WAIT) + 1
+        print(f"myDATA rate limit reached; waiting {wait}s before retrying {endpoint}...", file=sys.stderr)
+        _sleep(wait)
+    if status == 429:
+        raise MyDataError(f"HTTP 429 from myDATA {endpoint}: rate limit still exceeded after "
+                          f"{RATE_LIMIT_RETRIES} retries. Try again later or narrow the date range.", 5)
     if status == 401:
         raise MyDataError(
             f"HTTP 401 from myDATA ({env}): credentials rejected. Check MYDATA_USER_ID and "
@@ -161,9 +182,14 @@ def parse_xml(data):
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
         raise MyDataError("Refusing XML that contains a DOCTYPE/ENTITY declaration.")
     try:
-        return ET.fromstring(data)
+        root = ET.fromstring(data)
     except ET.ParseError as e:
         raise MyDataError(f"myDATA returned XML that could not be parsed: {e}")
+    # The API can wrap the real document, escaped, in a .NET <string> envelope
+    # (seen on mydataapidev.aade.gr); unwrap it and parse the inner XML.
+    if root.tag == f"{{{MS_SERIALIZATION_NS}}}string" and (root.text or "").lstrip().startswith("<"):
+        return parse_xml(root.text.strip())
+    return root
 
 
 def local(tag):
@@ -377,13 +403,40 @@ def cmd_check(args):
     return 0
 
 
+def is_self_entered(inv):
+    return (inv.get("invoiceHeader") or {}).get("invoiceType", "") in SELF_ENTERED_TYPES
+
+
+def expense_invoices(env, args):
+    """Invoices that are the business's expenses: received (RequestDocs) plus its own
+    recipient-entered documents (13.x/14.x/15.1/16.1 from RequestTransmittedDocs)."""
+    received = request_docs(env, "RequestDocs", args)
+    own = request_docs(env, "RequestTransmittedDocs", args)
+    seen = {i.get("mark") for i in received["invoices"]}
+    extra = [i for i in own["invoices"] if is_self_entered(i) and i.get("mark") not in seen]
+    received["invoices"].extend(extra)
+    received["expensesClassifications"].extend(own["expensesClassifications"])
+    received["pages"] += own["pages"]
+    received["selfEnteredFromTransmitted"] = len(extra)
+    return received
+
+
 def cmd_docs(args, endpoint):
-    result = request_docs(get_env(args.env), endpoint, args)
+    env = get_env(args.env)
+    if endpoint == "RequestDocs" and getattr(args, "include_self_entered", False):
+        result = expense_invoices(env, args)
+    else:
+        result = request_docs(env, endpoint, args)
+    # Classifications sent separately (SendExpensesClassification) arrive in their own list.
+    sent = {c.get("invoiceMark") for c in result["expensesClassifications"] if isinstance(c, dict)}
+    rows = [summarize_invoice(i) for i in result["invoices"]]
+    for r in rows:
+        if r["mark"] in sent:
+            r["classified"] = "yes"
     if args.format == "csv":
-        write_csv([summarize_invoice(i) for i in result["invoices"]], SUMMARY_FIELDS, sys.stdout)
+        write_csv(rows, SUMMARY_FIELDS, sys.stdout)
     elif args.format == "summary":
-        emit_json({k: v for k, v in result.items() if k != "invoices"} |
-                  {"invoices": [summarize_invoice(i) for i in result["invoices"]]})
+        emit_json({k: v for k, v in result.items() if k != "invoices"} | {"invoices": rows})
     else:
         emit_json(result)
     return 0
@@ -700,6 +753,13 @@ ERP_ALIASES = {
 }
 
 
+def normalise_afm(value):
+    """Compare VAT numbers loosely: drop spaces/dots/dashes and a Greek EL/GR prefix,
+    keep other country prefixes (foreign suppliers on 14.x documents)."""
+    s = re.sub(r"[\s.\-]", "", str(value or "")).upper()
+    return s[2:] if re.fullmatch(r"(EL|GR)\d{9}", s) else s
+
+
 def read_erp_csv(path):
     text = Path(path).read_text(encoding="utf-8-sig")
     try:
@@ -728,7 +788,7 @@ def read_erp_csv(path):
         rows.append({
             "line": n,
             "mark": re.sub(r"\D", "", get("mark")),
-            "afm": re.sub(r"\D", "", get("afm")),
+            "afm": normalise_afm(get("afm")),
             "date": parse_date(get("date")).isoformat() if get("date") else "",
             "amount": money(abs(amount)) if amount is not None else None,
             "ref": get("ref"),
@@ -742,7 +802,7 @@ def reconcile(erp_rows, invoices, side, tolerance=Decimal("0.01")):
     for inv in invoices:
         s = summarize_invoice(inv)
         gross = parse_amount(s["grossValue"]) if s["grossValue"] else None
-        docs.append({"mark": s["mark"], "afm": party_vat(inv, vat_role), "date": s["issueDate"][:10],
+        docs.append({"mark": s["mark"], "afm": normalise_afm(party_vat(inv, vat_role)), "date": s["issueDate"][:10],
                      "amount": money(abs(gross)) if gross is not None else None,
                      "invoiceType": s["invoiceType"], "series": s["series"], "aa": s["aa"],
                      "cancelled": bool(s["cancelledByMark"]), "used": False})
@@ -788,6 +848,15 @@ def reconcile(erp_rows, invoices, side, tolerance=Decimal("0.01")):
                 "erpLine": row["line"], "mark": row["mark"], "afm": row["afm"], "date": row["date"],
                 "amount": row["amount"], "ref": row["ref"],
                 "note": "several myDATA candidates; add the MARK to the ERP row" if candidates else ""})
+    # Hint at near misses: same AFM and date, different amount, both otherwise unmatched.
+    for miss in out["missingInMyData"]:
+        if miss["note"] or not (miss["afm"] and miss["date"]):
+            continue
+        near = [d for d in docs if not d["used"] and not d["cancelled"]
+                and d["afm"] == miss["afm"] and d["date"] == miss["date"]]
+        if len(near) == 1:
+            miss["note"] = (f"possible match: myDATA MARK {near[0]['mark']} has the same AFM and date "
+                            f"but amount {near[0]['amount']}")
     for d in docs:
         if not d["used"]:
             (out["cancelledInMyData"] if d["cancelled"] else out["missingInErp"]).append(_pub(d))
@@ -803,21 +872,33 @@ def _pub(doc):
 def cmd_reconcile(args):
     erp_rows = read_erp_csv(args.file)
     if args.mydata_json:
-        try:
-            saved = json.loads(Path(args.mydata_json).read_text(encoding="utf-8"))
-        except (OSError, ValueError) as e:
-            raise MyDataError(f"Cannot read {args.mydata_json}: {e}", 2)
-        invoices, env = saved.get("invoices", []), saved.get("env", "file")
-        if invoices and "mark" in invoices[0] and "invoiceHeader" not in invoices[0]:
-            raise MyDataError("--mydata-json needs the full JSON from `docs`/`transmitted` "
-                              "(not --format summary/csv).", 2)
+        invoices, env, seen = [], "file", set()
+        for path in args.mydata_json:
+            try:
+                saved = json.loads(Path(path).read_text(encoding="utf-8"))
+            except (OSError, ValueError) as e:
+                raise MyDataError(f"Cannot read {path}: {e}", 2)
+            items, env = saved.get("invoices", []), saved.get("env", env)
+            if items and "mark" in items[0] and "invoiceHeader" not in items[0]:
+                raise MyDataError("--mydata-json needs the full JSON from `docs`/`transmitted` "
+                                  "(not --format summary/csv).", 2)
+            if saved.get("method") == "RequestTransmittedDocs":
+                # Own transmissions: self-entered types are expenses, the rest income.
+                items = [i for i in items if is_self_entered(i) == (args.side == "expenses")]
+            for i in items:
+                if i.get("mark") not in seen:
+                    seen.add(i.get("mark"))
+                    invoices.append(i)
     else:
         if not (args.date_from and args.date_to):
             raise MyDataError("reconcile needs --from and --to (or --mydata-json).", 2)
         env = get_env(args.env)
-        endpoint = "RequestDocs" if args.side == "expenses" else "RequestTransmittedDocs"
         args.mark, args.max_mark, args.inv_type, args.counterpart = 0, None, None, None
-        invoices = request_docs(env, endpoint, args)["invoices"]
+        if args.side == "expenses":
+            invoices = expense_invoices(env, args)["invoices"]
+        else:
+            invoices = [i for i in request_docs(env, "RequestTransmittedDocs", args)["invoices"]
+                        if not is_self_entered(i)]
     if args.date_from and args.date_to:
         lo, hi = parse_date(args.date_from).isoformat(), parse_date(args.date_to).isoformat()
         erp_rows = [r for r in erp_rows if not r["date"] or lo <= r["date"] <= hi]
@@ -852,6 +933,10 @@ def build_parser():
         sp.add_argument("--inv-type", help="invoice type, e.g. 1.1 (table 8.1)")
         sp.add_argument("--counterpart", metavar="AFM", help="keep only invoices where this AFM is issuer or counterpart")
         sp.add_argument("--format", choices=("json", "summary", "csv"), default="json")
+        if name == "docs":
+            sp.add_argument("--include-self-entered", action="store_true",
+                            help="also include your own 13.x/14.x/15.1/16.1 expense documents "
+                                 "(fetched from RequestTransmittedDocs)")
 
     for name, help_text in (("income", "RequestMyIncome: income book totals"),
                             ("expenses", "RequestMyExpenses: expense book totals")):
@@ -875,8 +960,9 @@ def build_parser():
     sp.add_argument("--from", dest="date_from")
     sp.add_argument("--to", dest="date_to")
     sp.add_argument("--side", choices=("expenses", "income"), default="expenses",
-                    help="expenses: RequestDocs (received); income: RequestTransmittedDocs (issued)")
-    sp.add_argument("--mydata-json", help="use saved `docs`/`transmitted` JSON instead of calling the API")
+                    help="expenses: received + own 13.x/14.x documents; income: issued documents")
+    sp.add_argument("--mydata-json", action="append",
+                    help="saved `docs`/`transmitted` JSON instead of calling the API (repeatable)")
     sp.add_argument("--tolerance", default="0.01", help="amount tolerance in euro (default 0.01)")
     return p
 

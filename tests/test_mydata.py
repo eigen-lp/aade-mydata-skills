@@ -134,6 +134,21 @@ def test_aade_sample_classification_response_parses(creds, monkeypatch, capsys):
     assert ecls[0]["classificationMark"] == "400001912586845"
 
 
+def test_summary_marks_separately_classified_invoices(creds, monkeypatch, capsys):
+    page = (FIX / "requested_docs_page2.xml").read_text()
+    page = page.replace("</RequestedDoc>", """  <expensesClassificationsDoc>
+    <expensesInvoiceClassification>
+      <invoiceMark>400000000000104</invoiceMark>
+      <classificationMark>400000000000777</classificationMark>
+    </expensesInvoiceClassification>
+  </expensesClassificationsDoc>
+</RequestedDoc>""")
+    install(monkeypatch, {"RequestDocs": lambda p, b: (200, page.encode())})
+    _, out, _ = run(capsys, "docs", "--format", "summary")
+    flags = {i["mark"]: i["classified"] for i in json.loads(out)["invoices"]}
+    assert flags == {"400000000000103": "no", "400000000000104": "yes"}
+
+
 def test_expenses_book_paging_csv(creds, monkeypatch, capsys):
     fake = install(monkeypatch, {"RequestMyExpenses": ["requested_book_info.xml", "requested_book_info_page2.xml"]})
     code, out, _ = run(capsys, "expenses", "--from", "2026-10-01", "--to", "31/10/2026",
@@ -187,6 +202,25 @@ def test_http_401_message(creds, monkeypatch, capsys):
     assert code == 4 and "credentials rejected" in err
 
 
+def test_rate_limit_waits_and_retries(creds, monkeypatch, capsys):
+    replies = [(429, b'{ "statusCode": 429, "message": "Rate limit is exceeded. Try again in 65 seconds." }'),
+               (200, (FIX / "requested_docs_page2.xml").read_bytes())]
+    install(monkeypatch, {"RequestDocs": lambda p, b: replies.pop(0)})
+    waits = []
+    monkeypatch.setattr(mydata, "_sleep", waits.append)
+    code, out, err = run(capsys, "docs")
+    assert code == 0 and waits == [66]
+    assert len(json.loads(out)["invoices"]) == 2 and "rate limit" in err
+
+
+def test_rate_limit_gives_up(creds, monkeypatch, capsys):
+    install(monkeypatch, {"RequestDocs": lambda p, b: (429, b"Try again in 999 seconds.")})
+    waits = []
+    monkeypatch.setattr(mydata, "_sleep", waits.append)
+    code, _, err = run(capsys, "docs")
+    assert code == 5 and waits == [121, 121, 121] and "rate limit still exceeded" in err
+
+
 def test_error_bodies_are_redacted(creds, monkeypatch, capsys):
     echo = f"bad request for user {FAKE_USER} key {FAKE_KEY}".encode()
     install(monkeypatch, {"RequestDocs": lambda p, b: (500, echo)})
@@ -198,6 +232,37 @@ def test_error_bodies_are_redacted(creds, monkeypatch, capsys):
 
 def test_doctype_is_refused(creds, monkeypatch, capsys):
     evil = b'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x "y">]><RequestedDoc>&x;</RequestedDoc>'
+    install(monkeypatch, {"RequestDocs": lambda p, b: (200, evil)})
+    code, _, err = run(capsys, "docs")
+    assert code == 1 and "DOCTYPE" in err
+
+
+def wrap(xml_bytes):
+    """Wrap a document the way mydataapidev.aade.gr does: escaped inside a .NET <string>."""
+    from xml.sax.saxutils import escape
+    return ('<string xmlns="http://schemas.microsoft.com/2003/10/Serialization/">'
+            + escape(xml_bytes.decode("utf-8")) + "</string>").encode("utf-8")
+
+
+def test_wrapped_read_response_is_unwrapped(creds, monkeypatch, capsys):
+    pages = {False: wrap((FIX / "requested_docs_page1.xml").read_bytes()),
+             True: wrap((FIX / "requested_docs_page2.xml").read_bytes())}
+    install(monkeypatch, {"RequestDocs": lambda p, b: (200, pages["nextPartitionKey" in p])})
+    code, out, _ = run(capsys, "docs")
+    assert code == 0
+    data = json.loads(out)
+    assert len(data["invoices"]) == 4 and data["pages"] == 2
+
+
+def test_wrapped_send_response_is_unwrapped(creds, monkeypatch, capsys):
+    install(monkeypatch, {"SendExpensesClassification": "response_wrapped.xml"})
+    code, out, _ = run(capsys, "classify", "--file", str(FIX / "proposal_per_invoice.json"), "--send")
+    assert code == 7
+    assert json.loads(out)["results"][0]["errors"][0]["code"] == "215"
+
+
+def test_doctype_inside_wrapper_is_refused(creds, monkeypatch, capsys):
+    evil = wrap(b'<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x "y">]><RequestedDoc>&x;</RequestedDoc>')
     install(monkeypatch, {"RequestDocs": lambda p, b: (200, evil)})
     code, _, err = run(capsys, "docs")
     assert code == 1 and "DOCTYPE" in err
@@ -391,6 +456,64 @@ def test_reconcile_income_side_uses_transmitted(creds, monkeypatch, capsys):
     run(capsys, "reconcile", "--side", "income", "--file", str(FIX / "erp.csv"),
         "--from", "2026-10-01", "--to", "2026-10-31")
     assert fake.calls[0]["endpoint"] == "RequestTransmittedDocs"
+
+
+EMPTY_DOC = b'<RequestedDoc xmlns="http://www.aade.gr/myDATA/invoice/v1.0"/>'
+
+
+def test_docs_include_self_entered(creds, monkeypatch, capsys):
+    # Own transmissions page2: 103 is a 1.1 sale (income), 104 a 14.4 self-entered expense.
+    fake = install(monkeypatch, {"RequestDocs": lambda p, b: (200, EMPTY_DOC),
+                                 "RequestTransmittedDocs": "requested_docs_page2.xml"})
+    code, out, _ = run(capsys, "docs", "--include-self-entered", "--format", "summary")
+    assert code == 0
+    data = json.loads(out)
+    assert [i["mark"] for i in data["invoices"]] == ["400000000000104"]
+    assert data["selfEnteredFromTransmitted"] == 1
+    assert [c["endpoint"] for c in fake.calls] == ["RequestDocs", "RequestTransmittedDocs"]
+
+
+def test_reconcile_expenses_includes_self_entered(creds, monkeypatch, capsys, tmp_path):
+    install(monkeypatch, {"RequestDocs": lambda p, b: (200, EMPTY_DOC),
+                          "RequestTransmittedDocs": "requested_docs_page2.xml"})
+    erp = tmp_path / "erp.csv"
+    erp.write_text("mark,amount\n400000000000104,80.00\n")
+    code, out, _ = run(capsys, "reconcile", "--file", str(erp), "--from", "2026-10-01", "--to", "2026-10-31")
+    r = json.loads(out)
+    assert code == 0 and r["summary"]["matched"] == 1 and r["missingInErp"] == []
+    assert r["matched"][0]["afm"] == "666666666"  # supplier = issuer on self-entered documents
+
+
+def test_reconcile_income_excludes_self_entered_from_saved_files(tmp_path, creds, monkeypatch, capsys):
+    install(monkeypatch, {"RequestTransmittedDocs": "requested_docs_page2.xml"})
+    _, out, _ = run(capsys, "transmitted")
+    tx = tmp_path / "tx.json"
+    tx.write_text(out)
+    erp = tmp_path / "erp.csv"
+    erp.write_text("mark,amount\n")
+    code, out, _ = run(capsys, "reconcile", "--side", "income", "--file", str(erp), "--mydata-json", str(tx))
+    r = json.loads(out)
+    assert code == 0
+    assert r["summary"]["myDataInvoices"] == 1  # only the 1.1; the 14.4 is an expense
+    code, out, _ = run(capsys, "reconcile", "--file", str(erp), "--mydata-json", str(tx), "--mydata-json", str(tx))
+    assert json.loads(out)["summary"]["myDataInvoices"] == 1  # expenses side: the 14.4, deduplicated
+
+
+@pytest.mark.parametrize("raw, norm", [
+    ("EL123456783", "123456783"), ("gr 123.456.783", "123456783"), ("US987654321", "US987654321"),
+    ("123456783", "123456783"), ("", ""),
+])
+def test_normalise_afm(raw, norm):
+    assert mydata.normalise_afm(raw) == norm
+
+
+def test_reconcile_hints_near_misses(tmp_path, creds, monkeypatch, capsys):
+    docs = saved_docs(tmp_path, creds, monkeypatch, capsys)
+    erp = tmp_path / "erp.csv"
+    erp.write_text("afm;date;amount\nEL999999999;2026-10-05;125,00\n")  # myDATA has 124.00
+    code, out, _ = run(capsys, "reconcile", "--file", str(erp), "--mydata-json", str(docs))
+    miss = json.loads(out)["missingInMyData"][0]
+    assert code == 0 and "possible match: myDATA MARK 400000000000101" in miss["note"]
 
 
 def test_reconcile_rejects_summary_json(tmp_path, creds, monkeypatch, capsys):

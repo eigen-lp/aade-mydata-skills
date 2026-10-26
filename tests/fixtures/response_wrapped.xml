@@ -1,0 +1,14 @@
+<string xmlns="http://schemas.microsoft.com/2003/10/Serialization/">&lt;?xml version="1.0" encoding="utf-8"?&gt;
+&lt;ResponseDoc&gt;
+  &lt;response&gt;
+    &lt;index&gt;1&lt;/index&gt;
+    &lt;errors&gt;
+      &lt;error&gt;
+        &lt;message&gt;Classification type E3_585_016 is not allowed with category category2_1&lt;/message&gt;
+        &lt;code&gt;215&lt;/code&gt;
+      &lt;/error&gt;
+    &lt;/errors&gt;
+    &lt;statusCode&gt;ValidationError&lt;/statusCode&gt;
+  &lt;/response&gt;
+&lt;/ResponseDoc&gt;
+</string>

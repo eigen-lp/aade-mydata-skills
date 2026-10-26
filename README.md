@@ -82,7 +82,7 @@ python3 -m pip install pytest
 python3 -m pytest -q
 ```
 
-Tests are offline. To also validate the generated XML against AADE's schema, download the v2.0.2 XSD zip from the page above, unzip it, and run with `AADE_XSD_DIR=/path/to/xsds` (needs `xmllint`).
+Tests are offline. `tools/seed_test_invoices.py` (dev only, hard-wired to the test environment) sends a couple of synthetic 13.1/14.4 expense documents for your test AFM (`MYDATA_TEST_AFM`) so you can try `classify` and `reconcile` end to end. To also validate the generated XML against AADE's schema, download the v2.0.2 XSD zip from the page above, unzip it, and run with `AADE_XSD_DIR=/path/to/xsds` (needs `xmllint`).
 
 ## Licence and contact
 

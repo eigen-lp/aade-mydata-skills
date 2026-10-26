@@ -26,7 +26,7 @@ Everything goes through `${CLAUDE_SKILL_DIR}/scripts/mydata.py` (stdlib Python, 
 | Task | Command | Read first |
 |---|---|---|
 | Check setup | `mydata.py check` | [setup.md](references/setup.md) |
-| List invoices received (expenses) | `mydata.py docs --from 2026-10-01 --to 2026-10-31 --format summary` | [books.md](references/books.md) |
+| List expense invoices (received + own 13.x/14.x entries) | `mydata.py docs --include-self-entered --from 2026-10-01 --to 2026-10-31 --format summary` | [books.md](references/books.md) |
 | List invoices you issued | `mydata.py transmitted --from ... --to ...` | [books.md](references/books.md) |
 | Income / expense book totals | `mydata.py income\|expenses --from ... --to ... [--counterpart AFM] [--format csv]` | [books.md](references/books.md) |
 | Propose and send expense classifications | `mydata.py classify --file proposal.json` then `--send` | [classify.md](references/classify.md) |
@@ -37,7 +37,7 @@ Accountants acting for a client add `--entity <client AFM>` to any command.
 
 ## Classification loop (short version)
 
-1. `docs --format summary` for the period; pick invoices with `classified: no`.
+1. `docs --include-self-entered --format summary` for the period; pick invoices with `classified: no` that aren't cancelled.
 2. For each, get the full invoice (`docs --format json`, filter by MARK) and draft a proposal JSON following [classify.md](references/classify.md). Choose codes from `references/expense-combinations.json` for that invoice type; explain each choice in one line.
 3. `classify --file proposal.json` (dry run). Fix any `error:` lines.
 4. Show the table, say which environment, ask for an explicit yes, then `--send`. Report each `statusCode` and `classificationMark`.

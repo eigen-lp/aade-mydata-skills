@@ -38,6 +38,16 @@ The CLI parses responses without relying on XML namespaces: AADE's own sample `R
 - `classificationPostMode` (0 old way / 1 per invoice) appears in responses; it is set by AADE, not sent.
 - Business error codes are listed in §7.2 of the spec.
 
+## Observed on the test environment (live run, 26 Oct 2026)
+
+Not in the spec, but seen on `mydataapidev.aade.gr` and handled by the CLI:
+
+- **Wrapped responses.** Bodies can come as `<string xmlns="http://schemas.microsoft.com/2003/10/Serialization/">` with the real XML escaped inside. `mydata.py` unwraps it (and still refuses any DOCTYPE inside).
+- **Rate limiting.** HTTP 429 `Rate limit is exceeded. Try again in N seconds.` after a handful of calls in a row. The CLI waits the stated time (max 120 s) and retries up to 3 times.
+- **Recipient-entered documents** (13.x/14.x/15.1/16.1) are returned by RequestTransmittedDocs to the business that entered them. When sent with SendInvoices they must carry an expense classification on every line **and** the same classifications in `invoiceSummary` (errors 230, 311, 321), no `paymentMethods` (205), and 14.x needs a counterpart address (204). With category2_5 the E3 amount includes the VAT (306). SendExpensesClassification can replace those classifications afterwards (verified with `postPerInvoice=true`).
+- Read-back of a classification includes `transactionMode` `0` and `classificationPostMode` `1` for per-invoice submissions.
+- Error 105 `User VAT number X is not authorized to execute this method for VAT number Y` means the AFM in the document isn't the API user's (or one it's authorised for); the message reveals which AFM the user is registered under.
+
 ## v2.0.2 vs v2.0.1 / v2.0.0
 
 The v2.0.x changes are about digital delivery notes (new methods `RegisterTransfer`, `ConfirmDeliveryOutcome`, `RejectDeliveryNote`, `GetDeliveryNoteStatus`, `GenerateGroupQRCode`, `RequestGroupQRDetails`, `ConfirmDeliveryReturn`; new header fields such as `receivingNotePurpose`, `nonObligatedRecipient`, `withoutDigitalTransportTracking`; document types 1.4, 3.1, 3.2, 11.5 can now act as delivery notes). Invoices you read may carry the new delivery fields (`invoiceDeliveryStatus`, `deliveryLifecycle`, `packingsDeclarations`); the CLI passes them through untouched. The read endpoints and `SendExpensesClassification` used here are unchanged; `ExpensesClassificationType` still has `classificationType`, `classificationCategory`, `amount`, `vatAmount`, `vatCategory` (1-10), `vatExemptionCategory` (1-31) and `id`.

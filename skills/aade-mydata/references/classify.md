@@ -55,6 +55,10 @@ Always fill `invType`; it switches on the combination check. Amounts: non-negati
 - Not for fuel invoices, and not for type 1.5 (use per-line mode for those).
 - The same type/category combinations apply as in per-line mode.
 
+## Recipient-entered documents (13.x, 14.x, 15.1, 16.1)
+
+The business enters these itself, and AADE requires their expense classification **inside** the document when it is sent (outside this skill, e.g. by the ERP). They appear under `docs --include-self-entered`. `classify` can still re-classify them afterwards with SendExpensesClassification; the new classification replaces the original (verified on the test environment).
+
 ## A. Expense categories (table 8.10)
 
 | Category | Meaning |
