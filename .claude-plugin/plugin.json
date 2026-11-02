@@ -2,7 +2,7 @@
   "name": "aade-mydata",
   "displayName": "AADE myDATA",
   "description": "Read AADE myDATA e-books, propose and send expense classifications (E3/VAT), and reconcile myDATA with ERP or bank exports. Test environment by default.",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "author": {
     "name": "EIGEN LAB",
     "url": "https://eigen.gr"
@@ -10,5 +10,39 @@
   "homepage": "https://github.com/eigen-lp/aade-mydata-skills",
   "repository": "https://github.com/eigen-lp/aade-mydata-skills",
   "license": "MIT",
-  "keywords": ["aade", "mydata", "greece", "accounting", "invoices", "e-books", "tax"]
+  "keywords": [
+    "aade",
+    "mydata",
+    "greece",
+    "accounting",
+    "invoices",
+    "e-books",
+    "tax"
+  ],
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://github.com/eigen-lp/aade-mydata-skills#readme",
+  "supportUrl": "https://github.com/eigen-lp/aade-mydata-skills/issues",
+  "userConfig": {
+    "mydata_user_id": {
+      "type": "string",
+      "title": "myDATA username",
+      "description": "Your myDATA REST API username (aade-user-id). Test and production registrations have different usernames."
+    },
+    "mydata_subscription_key": {
+      "type": "string",
+      "title": "myDATA subscription key",
+      "sensitive": true,
+      "description": "The subscription key (Κωδικός API) for that username. Stored in your system's secure credential store, never in settings files or the chat."
+    },
+    "mydata_env": {
+      "type": "string",
+      "title": "Environment",
+      "options": [
+        "test",
+        "prod"
+      ],
+      "default": "test",
+      "description": "Which myDATA environment these credentials belong to. Writing to prod still needs your explicit approval and --yes-production."
+    }
+  }
 }

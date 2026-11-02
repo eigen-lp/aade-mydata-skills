@@ -30,14 +30,16 @@ git clone https://github.com/eigen-lp/aade-mydata-skills
 cp -r aade-mydata-skills/skills/aade-mydata ~/.claude/skills/
 ```
 
-**2. Get test credentials** at <https://mydata-dev-register.azurewebsites.net> and put them in your shell, not in the chat:
+**2. Get test credentials** at <https://mydata-dev-register.azurewebsites.net> and enter them when Claude Code asks for the plugin's settings (username, subscription key, environment `test`). The key is masked and kept in your system's secure credential store, never in the chat. Change them later in `/plugin` → aade-mydata → configure.
+
+Copied the skill folder instead of installing the plugin? Put them in your shell, or in a git-ignored file you pass with `--env-file`:
 
 ```bash
 export MYDATA_USER_ID="your-test-username"
 export MYDATA_SUBSCRIPTION_KEY="your-test-subscription-key"
 ```
 
-**3. Start Claude Code from that shell** and ask, for example:
+**3. Start a new Claude Code session** and ask, for example:
 
 - "Check my myDATA setup."
 - "Which supplier invoices from October are still unclassified? Propose classifications."
@@ -53,7 +55,7 @@ Production uses separate credentials, created after logging in with TAXISnet at 
 
 ## Safety
 
-- Keys stay in environment variables. The script never prints them, and the skill tells Claude never to ask for them in chat.
+- Keys stay out of the chat: in the plugin's settings (secure credential store), your environment or a git-ignored `--env-file`. The script never prints them, and the skill tells Claude never to ask for them in chat.
 - **Reads run without asking; writes always ask.** The skill pre-approves its read commands (`check`, `docs`, `transmitted`, `income`, `expenses`, `classify`, `reconcile`), so Claude runs them straight away. The only write, `send`, isn't pre-approved: Claude Code shows you the command and asks before it runs.
 - `classify` is a dry run: it validates the proposal (codes, amounts, AADE's type/category/E3 combinations) and prints a table, the exact XML and a confirmation code. Claude must show you that table and get an explicit yes; `send` only accepts the matching code, so what goes to AADE is exactly what you approved.
 - Production writes need the `--yes-production` flag.

@@ -4,8 +4,8 @@
     python3 tools/package_plugin.py            # -> dist/aade-mydata-<version>.zip
     python3 tools/package_plugin.py --out x.zip
 
-The zip holds exactly one .claude-plugin/plugin.json plus the skill, licence and
-READMEs. Tests, tools, credentials and OS clutter are left out. Entries are sorted
+The zip holds exactly one .claude-plugin/plugin.json plus the icon, the hook, the skill,
+licence and READMEs. Tests, tools, credentials and OS clutter are left out. Entries are sorted
 and timestamped from a fixed date, so the same sources give the same bytes.
 """
 import argparse
@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-INCLUDE = [".claude-plugin/plugin.json", "skills", "LICENSE", "README.md", "README.el.md", "SECURITY.md"]
+INCLUDE = [".claude-plugin/plugin.json", ".claude-plugin/icon.png", "hooks", "skills", "LICENSE", "README.md", "README.el.md", "SECURITY.md"]
 SKIP_NAMES = {".DS_Store", "__pycache__", ".pytest_cache"}
 SKIP_SUFFIXES = {".pyc"}
 FIXED_TIME = (2026, 1, 1, 0, 0, 0)

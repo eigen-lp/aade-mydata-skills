@@ -29,7 +29,7 @@ from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
-VERSION = "0.2.1"
+VERSION = "0.3.0"
 SPEC_VERSION = "2.0.2"
 
 BASE_URLS = {
@@ -139,7 +139,8 @@ def get_credentials():
     if missing:
         raise MyDataError(
             "Missing environment variable(s): " + ", ".join(missing) + ".\n"
-            "Set them in your shell (not in the chat), e.g. in ~/.zshrc or a .env file you source.\n"
+            "Save them in the plugin's settings (Claude Code: /plugin configure aade-mydata@eigen-lp),\n"
+            "set them in your shell, or pass a .env file with --env-file. Never paste them in the chat.\n"
             "Test-environment credentials: https://mydata-dev-register.azurewebsites.net",
             3,
         )

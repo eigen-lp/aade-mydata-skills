@@ -10,9 +10,13 @@ myDATA authenticates every call with two headers: `aade-user-id` (a username you
 
 The API user acts for the AFM it was registered under. An accountant registered under their own AFM passes `--entity <client AFM>` (the `entityVatNumber` parameter) to act for a client they are authorised for.
 
-## 2. Put them in the environment, not in the chat
+## 2. Save them in the plugin's settings, not in the chat
 
-Never paste keys into Claude. Set them in your shell, for example in `~/.zshrc` or `~/.bashrc`:
+Never paste keys into Claude. With the plugin installed in Claude Code, enter them when it asks for its settings: **myDATA username**, **myDATA subscription key** and **Environment** (`test` or `prod`). The key is masked and kept in your system's secure credential store (the macOS Keychain, for example), not in `settings.json`. Change them later in `/plugin` → aade-mydata → configure, or with `claude plugin configure aade-mydata@eigen-lp`. Start a new session after changing them.
+
+A small SessionStart hook passes the saved values to the skill's commands as `MYDATA_USER_ID`, `MYDATA_SUBSCRIPTION_KEY` and `MYDATA_ENV`. A variable you already set in your shell takes precedence, and `--env-file` overrides both. The plugin settings hold one set of credentials; keep the other environment's in an `--env-file`.
+
+**Alternatively**, set them in your shell, for example in `~/.zshrc` or `~/.bashrc`:
 
 ```bash
 export MYDATA_USER_ID="your-username"
@@ -47,7 +51,7 @@ The plugin works in Claude Code, Cowork and claude.ai chat: a plugin you add und
 
 1. **Install.** In the Claude desktop app open **Customize > Plugins**, then either **Add > Add marketplace** with `eigen-lp/aade-mydata-skills`, or **Add > Upload plugin** with the release zip (`tools/package_plugin.py` builds it).
 2. **Network.** Cowork runs commands in a sandbox that reaches only allowed domains. Allow outbound access to `mydatapi.aade.gr` (production) and `mydataapidev.aade.gr` (test): in the desktop app's settings turn on code execution and network egress, then add both domains to the allowed list (or allow all domains). On Team/Enterprise plans an admin manages this list. Settings apply to tasks started after the change.
-3. **Credentials.** Your shell's environment variables don't reach Cowork. Put a `.env.prod` / `.env.dev` file (format above) in a folder you share with the Cowork task and tell Claude its path; the skill passes it with `--env-file`. Each task starts on a clean machine, so nothing is stored between tasks. Don't paste keys into the chat.
+3. **Credentials.** Your shell's environment variables don't reach Cowork. If the plugin's settings don't reach the commands there either (`check` shows NOT SET), put a `.env.prod` / `.env.dev` file (format above) in a folder you share with the Cowork task and tell Claude its path; the skill passes it with `--env-file`. Each task starts on a clean machine, so nothing is stored between tasks. Don't paste keys into the chat.
 4. **Confirmation.** Cowork has its own approval model, so you may not get the same per-command prompt as in Claude Code. The safeguards that don't depend on the app still apply: Claude must show you the dry-run table and get your yes, `send` refuses without the matching confirmation code, and production needs `--yes-production`.
 
 Claude.ai chat additionally needs code execution with network access to the same domains, and has no folder to share, so Cowork or Claude Code are the better fit.

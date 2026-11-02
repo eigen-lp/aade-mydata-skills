@@ -13,18 +13,18 @@ allowed-tools:
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py classify *)
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py reconcile *)
 metadata:
-  version: 0.2.1
+  version: 0.3.0
   spec: myDATA REST API v2.0.2 (ERP channel)
   homepage: https://github.com/eigen-lp/aade-mydata-skills
 ---
 
 # AADE myDATA
 
-Everything goes through `python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py <command>` (stdlib Python, JSON/CSV out). Default environment is **test**. Run each command on its own, exactly in that form: no `cd`, `&&`, `;`, pipes, `source` or `>` redirects. Load credentials with `--env-file <path>` and save output with `--out <file>` instead.
+Everything goes through `python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py <command>` (stdlib Python, JSON/CSV out). Default environment is **test**. Run each command on its own, exactly in that form: no `cd`, `&&`, `;`, pipes, `source` or `>` redirects. Save output with `--out <file>` instead, and load a credentials file with `--env-file <path>` when the user names one.
 
 **Script path.** If `${CLAUDE_SKILL_DIR}` shows up literally instead of as a real path (some apps don't substitute it), use the absolute path of `scripts/mydata.py` in the folder that contains this SKILL.md. Find it once and reuse it.
 
-**Cowork and other sandboxes.** The script needs `python3` and HTTPS access to `mydatapi.aade.gr` (production) or `mydataapidev.aade.gr` (test). If a call fails with a network error, tell the user to allow those domains (see the Cowork section of [setup.md](references/setup.md)). Environment variables from the user's shell aren't available there: ask the user for the path of their `.env` file in a folder they've shared, and pass it with `--env-file`.
+**Cowork and other sandboxes.** The script needs `python3` and HTTPS access to `mydatapi.aade.gr` (production) or `mydataapidev.aade.gr` (test). If a call fails with a network error, tell the user to allow those domains (see the Cowork section of [setup.md](references/setup.md)). If `check` reports the credentials as NOT SET there, ask the user for the path of their `.env` file in a folder they've shared, and pass it with `--env-file`.
 
 ## Reads vs writes
 
@@ -37,7 +37,7 @@ Everything goes through `python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py <command>
 
 ## Other rules
 
-1. **Never ask for keys in chat.** Credentials come from `MYDATA_USER_ID` / `MYDATA_SUBSCRIPTION_KEY` (and `MYDATA_ENV`) in the environment or an `--env-file`. If they're missing, point to [references/setup.md](references/setup.md). If the user pastes a key anyway, don't repeat it and suggest rotating it.
+1. **Never ask for keys in chat.** Credentials come from the plugin's settings (Claude Code asks for them when the plugin is enabled and keeps the key in the system's secure store), from `MYDATA_USER_ID` / `MYDATA_SUBSCRIPTION_KEY` (and `MYDATA_ENV`) in the environment, or from an `--env-file`. If `check` says they're missing, tell the user to set them with `/plugin` → aade-mydata → configure, and point to [references/setup.md](references/setup.md). If the user pastes a key anyway, don't repeat it and suggest rotating it.
 2. **The accountant decides.** Present classifications as proposals and recommend the business's accountant (λογιστής) reviews them, especially for production. Not tax advice; not affiliated with AADE.
 3. Never use `transactionMode` (reject/deviation) unless the user explicitly asks to reject or dispute a specific invoice.
 4. Show summaries and counts, not raw dumps of the user's books, unless asked. Save large output with `--out`.
