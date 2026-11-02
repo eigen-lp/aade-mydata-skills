@@ -10,6 +10,8 @@ Agent Skills that let [Claude Code](https://claude.com/claude-code) work with **
 
 Built for Greek businesses and accountants. Version 1 reads and classifies; it does not issue or cancel invoices. It talks to the **test environment by default**.
 
+Read the announcement (in Greek): [Δωρεάν, ανοιχτός κώδικας: βοηθός AI για το myDATA](https://eigen.gr/el/insights/mydata-ai-skills-dorean/).
+
 > Not affiliated with or endorsed by AADE. Not tax advice: have your accountant review classifications before they go to production.
 
 ## Install
