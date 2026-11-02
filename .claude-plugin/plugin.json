@@ -2,7 +2,7 @@
   "name": "aade-mydata",
   "displayName": "AADE myDATA",
   "description": "Read AADE myDATA e-books, propose and send expense classifications (E3/VAT), and reconcile myDATA with ERP or bank exports. Test environment by default.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": {
     "name": "EIGEN LAB",
     "url": "https://eigen.gr"
@@ -44,5 +44,7 @@
       "default": "test",
       "description": "Which myDATA environment these credentials belong to. Writing to prod still needs your explicit approval and --yes-production."
     }
-  }
+  },
+  "privacyPolicyUrl": "https://github.com/eigen-lp/aade-mydata-skills/blob/main/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/eigen-lp/aade-mydata-skills/blob/main/TERMS.md"
 }

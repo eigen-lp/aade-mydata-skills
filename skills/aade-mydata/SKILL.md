@@ -13,7 +13,7 @@ allowed-tools:
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py classify *)
   - Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/mydata.py reconcile *)
 metadata:
-  version: 0.3.0
+  version: 0.3.1
   spec: myDATA REST API v2.0.2 (ERP channel)
   homepage: https://github.com/eigen-lp/aade-mydata-skills
 ---

@@ -63,6 +63,10 @@ Production uses separate credentials, created after logging in with TAXISnet at 
 
 More in [SECURITY.md](SECURITY.md).
 
+## Data and privacy
+
+The plugin talks only to AADE's myDATA API (`mydataapidev.aade.gr` for test, `mydatapi.aade.gr` for production), sending your own credentials and, after your approval, the classifications you confirmed. It has no server of its own, no analytics and no telemetry. Eigen receives nothing. A SessionStart hook copies the plugin's saved settings into the session so the script can read them, and prints nothing. Files are written only where you ask with `--out`. See the [privacy policy](PRIVACY.md) and [terms of use](TERMS.md).
+
 ## Using the script directly
 
 ```bash

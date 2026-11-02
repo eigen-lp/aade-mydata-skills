@@ -16,7 +16,7 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-INCLUDE = [".claude-plugin/plugin.json", ".claude-plugin/icon.png", "hooks", "skills", "LICENSE", "README.md", "README.el.md", "SECURITY.md"]
+INCLUDE = [".claude-plugin/plugin.json", ".claude-plugin/icon.png", "hooks", "skills", "LICENSE", "README.md", "README.el.md", "SECURITY.md", "PRIVACY.md", "TERMS.md"]
 SKIP_NAMES = {".DS_Store", "__pycache__", ".pytest_cache"}
 SKIP_SUFFIXES = {".pyc"}
 FIXED_TIME = (2026, 1, 1, 0, 0, 0)

@@ -29,7 +29,7 @@ from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 SPEC_VERSION = "2.0.2"
 
 BASE_URLS = {
